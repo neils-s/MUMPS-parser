@@ -215,7 +215,7 @@ PARSER1
     ;       @map@("expr",2,"value") = "sum"
     ;
     ;       ; A sum of 2 expressions
-    ;               @map@("sum")="subtreeChain"
+    ;       @map@("sum")="subtreeChain"
     ;       @map@("sum",1)="token"
     ;       @map@("sum",1,"value")="expr"
     ;       @map@("sum",2)="literal"
@@ -246,8 +246,10 @@ PARSER1
     ;   codePointer - a string pointer to the array holding the code to be parsed.
     ;   startColumn - the column of @codePointer to start the parse at.
     ;   forceParseAs - If we want to force the parsing as a specific token, this parameter is used.  If this isn't set, then every token in @map will be tried.
+    ;   depth - An opaque variable tracking the current depth in the outParseTreePointer
     ; Returns the number of characters parsed.  Returns negative numbers in case of error.
-parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn) q:$g(subTreePointer)="" "-1,missing subtreePointer"
+parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn) 
+    q:$g(subTreePointer)="" "-1,missing subtreePointer"
     ; Recall that subtrees are of the generic form:
     ;       @subtree = subtree type
     ;       @subtree@(subnodes) = additional data.
@@ -259,13 +261,18 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;   5) "delimList" to denote a delimited list, 
     ;   6) "token" to reference another token
     ;
-    n subTreeType,charsParsed,literalValue,tokenName,contentSubTreePointer,delimiterSubTreePointer
+    n subTreeType,charsParsed,literalValue,tokenName,contentSubTreePointer,delimiterSubTreePointer,oldForce
     s subTreeType=@subTreePointer
     ;
-    ; The subtrees allow parsing behavior to be forced
-    i $g(@subTreePointer@("force"))'="" n %parseControlForcing s %parseControlForcing=@subTreePointer@("force")
-    ; The broadly scoped variable %parseControlForcing is in scope for this function and all called functions.
-    ; It will persist to deeper stack levels to change the parsing behavior.
+    ; The subtrees allow parsing behavior to be forced.
+    ; The broadly scoped variable %parseControlForcing is in scope for this stack level and all higher levels.
+    i $g(@subTreePointer@("force"))'="" s oldForce=$g(%parseControlForcing) n %parseControlForcing d
+    . s %parseControlForcing=oldForce
+    . n index,piece
+    . f index=1:1:$l(@subTreePointer@("force"),",") d
+    . . s piece=$p(@subTreePointer@("force"),",",index)
+    . . q:piece=""  q:%parseControlForcing[piece 
+    . . s %parseControlForcing=piece_$s(%parseControlForcing="":"",1:","_%parseControlForcing)
     ;
     i subTreeType="" d
     . i $d(@subTreePointer)<10 s charsParsed=0 s @outParseTreePointer=""
@@ -273,7 +280,7 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;
     i subTreeType="literal" d
     . s literalValue=@subTreePointer@("value")
-    . s charsParsed=$$parseLiteral(literalValue,$g(%parseControlForce),outParseTreePointer,mapPointer,codePointer,startColumn)
+    . s charsParsed=$$parseLiteral(literalValue,outParseTreePointer,mapPointer,codePointer,startColumn)
     ; 
     i subTreeType="subtreeChain" d
     . s charsParsed=$$parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn)
@@ -299,7 +306,7 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ; As a reminder, the structure of a subTreeChain is:
     ;       @subtree = "subtreeChain"
     ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in the deeper subtrees.
-    ;               (currently, the only allowed value is "forceToLowerCase" to force input to be automatically changed to lowercase)
+    ;               (An example value is "forceToLowerCase" to force input to be automatically changed to lowercase)
     ;               The forced behavior affects the parsing of this subtree and all sub-subtrees.
     ;       @subtree(1) = the 1st subtree.  Any valid @map@ root is valid here (without the human-readable description).
     ;       @subtree(2) = the 2nd subtree.  Any valid @map@ root is valid here (without the human-readable description).
@@ -319,27 +326,33 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ; Returns the number of characters parsed or a negative number on an error.
 parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn)
     q:$g(subTreePointer)="" "-1,no subTreePointer."
-    n tmpOutParseRootPointer,totalCharsParsed,tempCodePosition,subTreePosition,tempSubtreePointer,tempOutParseTreePointer,charsParsed
+    n totalCharsParsed,tempCodePosition,subTreePosition,tempSubtreePointer,tempOutParseTreePointer,charsParsed,outSubTreePosition
     ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
     ; This is because we merge the parse tree pointers between the levels of the stack.
-    s tmpOutParseRootPointer="tmpPrs"_$st
+    n tmpOutParseRootPointer
+    s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
     s totalCharsParsed=0
     s tempCodePosition=startColumn
+    s outSubTreePosition=1
     ; We parse, keeping a running total of the total characters processed until hitting an error (parsing negative characters) or running out of subtrees in the subtreeChain.
     f subTreePosition=1:1 q:'$d(@subTreePointer@(subTreePosition))  d  q:totalCharsParsed<0
     . s tempSubtreePointer=$name(@subTreePointer@(subTreePosition))
-    . s tempOutParseTreePointer=$name(@tmpOutParseRootPointer@(subTreePosition))
+    . s tempOutParseTreePointer=$name(@tmpOutParseRootPointer@(outSubTreePosition))
     . ;
     . s charsParsed=$$parseSubtree(tempSubtreePointer,tempOutParseTreePointer,mapPointer,codePointer,tempCodePosition)
     . ;
     . i charsParsed<0 s totalCharsParsed=charsParsed q   ; if an error condition was returned, we just pass that back.
+    . i charsParsed=0 q  ; Ignore any chain elements that parses to an empty string.  This doesn't make all chain elements optional, but it does simplify the parse tree
     . s totalCharsParsed=totalCharsParsed+charsParsed
     . s tempCodePosition=tempCodePosition+charsParsed
+    . s outSubTreePosition=1+outSubTreePosition
     ;
-    i totalCharsParsed'<0 m @outParseTreePointer=@tmpOutParseRootPointer s @outParseTreePointer=$$readCodeStream(codePointer,startColumn,totalCharsParsed)
+    i totalCharsParsed'<0,$g(%parseControlForcing)'["noStore" d
+    . m @outParseTreePointer=@tmpOutParseRootPointer 
+    . s @outParseTreePointer=$$readCodeStream(codePointer,startColumn,totalCharsParsed)
     ;
     q totalCharsParsed
     ;
@@ -381,12 +394,14 @@ parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,star
     ;   codePointer - a string pointer to the array holding the code to be parsed.
     ;   startColumn - the column of @codePointer to start the parse at.
     ; Returns the number of characters parsed.  This is negative if an error is encountered.
-parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn) q:$g(subTreePointer)="" "-1,no subTreePointer"
-    n tmpOutParseRootPointer,whichOption,tempSubTreePointer,tempOutParseTreePointer,amountParsed,maxParsed,bestOption
+parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn)
+    q:$g(subTreePointer)="" "-1,no subTreePointer"
+    n whichOption,tempSubTreePointer,tempOutParseTreePointer,amountParsed,maxParsed,bestOption
     ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
     ; This is because we merge the parse tree pointers between the levels of the stack.
-    s tmpOutParseRootPointer="tmpPrs"_$st
+    n tmpOutParseRootPointer
+    s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
     f whichOption=1:1 q:'$d(@subTreePointer@(whichOption))  d
@@ -405,7 +420,7 @@ parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;
     ; Handle the edge case of an empty list of options.
     i '$g(bestOption) s maxParsed="-3,no error-free parse option found"
-    e  m @outParseTreePointer=@tmpOutParseRootPointer@(bestOption)
+    e  i $g(%parseControlForcing)'["noStore",maxParsed>0 m @outParseTreePointer=@tmpOutParseRootPointer@(bestOption)
     ;
     q maxParsed
     ;
@@ -459,11 +474,12 @@ parseDelimList(contentSubTreePointer,delimiterSubtreePointer,outParseTreePointer
     q:$g(contentSubTreePointer)="" "-5, missing contentSubTreePointer"
     q:$g(delimiterSubtreePointer)="" "-6, missing delimiterSubtreePointer"
     ;
-    n tmpOutParseRootPointer,totalCharsParsed,charsParsed,delimCharsParsed,tempCodePosition,tempListObjectParseTreePointer,tempDelimiterParseTreePointer,listObjNum
+    n totalCharsParsed,charsParsed,delimCharsParsed,tempCodePosition,tempListObjectParseTreePointer,tempDelimiterParseTreePointer,listObjNum
     ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
     ; This is because we merge the parse tree pointers between the levels of the stack.
-    s tmpOutParseRootPointer="tmpPrs"_$st
+    n tmpOutParseRootPointer
+    s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
     s totalCharsParsed=0,charsParsed=0,delimCharsParsed=0
@@ -481,8 +497,11 @@ parseDelimList(contentSubTreePointer,delimiterSubtreePointer,outParseTreePointer
     . ;
     . ; Update the character count and merge in the parsed delimiter and character data
     . s totalCharsParsed=totalCharsParsed+charsParsed+delimCharsParsed
-    . m @outParseTreePointer@("contents",listObjNum)=@tempListObjectParseTreePointer
-    . m:$d(@tempDelimiterParseTreePointer) @outParseTreePointer@("delimiters",listObjNum-1)=@tempDelimiterParseTreePointer
+    . i $g(%parseControlForcing)'["noStore" d
+    . . m:charsParsed>0 @outParseTreePointer@("contents",listObjNum)=@tempListObjectParseTreePointer
+    . . m:delimCharsParsed>0 @outParseTreePointer@("delimiters",listObjNum-1)=@tempDelimiterParseTreePointer
+    . . ;m:$d(@tempListObjectParseTreePointer) @outParseTreePointer@("contents",listObjNum)=@tempListObjectParseTreePointer
+    . . ;m:$d(@tempDelimiterParseTreePointer) @outParseTreePointer@("delimiters",listObjNum-1)=@tempDelimiterParseTreePointer
     . k @tempListObjectParseTreePointer,@tempDelimiterParseTreePointer
     . ;
     . ; Now read ahead to the next delimiter
@@ -512,9 +531,18 @@ parseToken(token,outParseTreePointer,mapPointer,codePointer,startColumn)
     q:$g(mapPointer)="" "-8, no map pointer specified.  Can't resolve token definition."
     ;
     n charsParsed,subTreePointer
+    ;
+    n tmpOutParseRootPointer
+    s tmpOutParseRootPointer="tmpPrs"_$stack
+    n @tmpOutParseRootPointer
+    ;
     s subTreePointer=$name(@mapPointer@(token))
-    s charsParsed=$$parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn)
-    s:charsParsed'<0 @outParseTreePointer@("token")=token
+    s charsParsed=$$parseSubtree(subTreePointer,tmpOutParseRootPointer,mapPointer,codePointer,startColumn)
+    ;
+    i charsParsed'<0,$g(%parseControlForcing)'["noStore" d
+    . s @outParseTreePointer@("token")=token 
+    . m @outParseTreePointer@("value")=@tmpOutParseRootPointer
+    . s @outParseTreePointer@("value")=$$readCodeStream(codePointer,startColumn,charsParsed)
     ;
     q charsParsed
     ;
@@ -530,22 +558,23 @@ parseToken(token,outParseTreePointer,mapPointer,codePointer,startColumn)
     ;   codePointer - a string pointer to the array holding the code to be parsed.
     ;   startColumn - the column of @codePointer to start the parse at.  This defaults to "1".
     ; Returns the number of characters parsed.  This is negative if an error is encountered.
-parseLiteral(literalValue,parseControlForce,outParseTreePointer,mapPointer,codePointer,startColumn) 
+parseLiteral(literalValue,outParseTreePointer,mapPointer,codePointer,startColumn) 
     q:$g(outParseTreePointer)="" "-1,no outParseTreePointer specified."
     q:$g(literalValue)="" "-9,an empty literal value is left-recursive and forces an infinite loop."
     ;
-    n literalLength,charsParsed
+    n literalLength,charsParsed,codeFragment
     s literalLength=$l(literalValue)
     s codeFragment=$$readCodeStream(codePointer,startColumn,literalLength)
     ;
-    i parseControlForce="forceToLowerCase" d
+    ; Check if the grammer requires special handling at this level
+    i $g(%parseControlForcing)["forceToLowerCase" d
     . s codeFragment=$tr(codeFragment,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")
     ;
     ; If the literalValue matches the next chunk of code, we'll return the length of the code parsed.  Otherwise, it's an error.
     i literalValue=codeFragment s charsParsed=literalLength
     e  s charsParsed="-10,literal value doesn't match next code fragments"
     ;
-    s:charsParsed>0 @outParseTreePointer=literalValue
+    i charsParsed>0,$g(%parseControlForcing)'["noStore" s @outParseTreePointer=literalValue
     ;
     q charsParsed
     ;
@@ -583,27 +612,27 @@ showParseTree(parseTreePointer) q:$g(parseTreePointer)="" "ERROR!!! no parseTree
     ;
     ; This function returns 1 exactly when we can expect a node to contain the complete definition of
     ; a subtree.
-definesCompleteSubtree(mapNode)
-    q:$g(mapNode)="" "-1, the mapNode parameter is required for the definesCompleteSubtree function"
-    n sublen,lastSubscript
-    s sublen=$ql(mapNode)
-    q:sublen=1 1 ; we're somewhere like @map@(tokenName)
-    s lastSubscript=$qs(mapNode,sublen)
-    q:lastSubscript=+lastSubscript 1 ; if the last subscript is numeric, it always defines a new (possibly null) subtree
-    q:lastSubscript="content" 1
-    q:lastSubscript="delimiter" 1
-    q:@mapNode="" 1 ; the null subtree is complete
-    q 0
+ ;definesCompleteSubtree(mapNode)
+    ;q:$g(mapNode)="" "-1, the mapNode parameter is required for the definesCompleteSubtree function"
+    ;n sublen,lastSubscript
+    ;s sublen=$ql(mapNode)
+    ;q:sublen=1 1 ; we're somewhere like @map@(tokenName)
+    ;s lastSubscript=$qs(mapNode,sublen)
+    ;q:lastSubscript=+lastSubscript 1 ; if the last subscript is numeric, it always defines a new (possibly null) subtree
+    ;q:lastSubscript="content" 1
+    ;q:lastSubscript="delimiter" 1
+    ;q:@mapNode="" 1 ; the null subtree is complete
+    ;q 0
     ;
     ;
     ; This function takes in a node of the grammer and returns 1 when the node defines a 'compiler directive' or other metadata.
     ; At present, the only meta-data we allow is "force", which can be set to "forceToLowerCase", but we're being a bit more general here.
     ; The function will return a negative in case of an error.
-isMetaData(mapNode) q:$g(mapNode)="" "-1, the mapNode parameter is required by the isMetaData function."
-    i $$definesCompleteSubtree(mapNode) q 0 ; subtrees are clearly not metadata
-    i $qs(mapNode,$ql(mapNode))="value" q 0 ; tokens and literals are not metadata
-    ; Not actually checking just the "force" node adds some future-proofing to the code.
-    q 1
+ ;isMetaData(mapNode) q:$g(mapNode)="" "-1, the mapNode parameter is required by the isMetaData function."
+    ;i $$definesCompleteSubtree(mapNode) q 0 ; subtrees are clearly not metadata
+    ;i $qs(mapNode,$ql(mapNode))="value" q 0 ; tokens and literals are not metadata
+    ;; Not actually checking just the "force" node adds some future-proofing to the code.
+    ;q 1
     ;
     ;
     ; *******************************
