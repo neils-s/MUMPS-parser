@@ -1,5 +1,5 @@
 PARSER1
-    ; Copyright (C) 2013 Neils Schoenfelder
+    ; Copyright (C) 2013-2020 Neils Schoenfelder
     ; 
     ; This program is free software; you can redistribute it and/or
     ; modify it under the terms of the GNU General Public License
@@ -22,9 +22,9 @@ PARSER1
     ; =====  OVERVIEW  ====
     ; This is a parser for any language that  can be expressed using a syntax diagram consisting only of:
     ;   1) string literals
-    ;   2) options
+    ;   2) collections of finitely many options
     ;   3) delimited lists
-    ;   4) named tokens.
+    ;   4) named tokens
     ; Note that it's possible to draw a syntax diagram that isn't of this form, but that's actually pretty tricky.
     ;
     ;
@@ -39,7 +39,11 @@ PARSER1
     ;
     ; The structure of the subtrees, is of the generic form:
     ;       @subtree = subtree type
-    ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in this or deeper subtrees.
+    ;       @subtree@("force") = a comma-delimited list of behaviors to force when parsing this literal subtree.
+    ;               (currently, the only allowed values are:
+    ;                     "forceToLowerCase" to force input to be automatically changed to lowercase, and
+    ;                     "noStore" which will prevent the deeper parse levels from being stored in the final parse tree
+    ;                though this list of options could be extended later)
     ;       @subtree@(subnodes) = additional data.
     ; The additional data can be quite extensive, and include references to other tokens, lists of options, string literal, etc.
     ;
@@ -60,8 +64,7 @@ PARSER1
     ; 2) literal:
     ;       @subtree = "literal"
     ;       @subtree@("value") = the specific string literal 
-    ;       @subtree@("force") = any behavior of the parser to force when parsing this literal subtree.
-    ;               (currently, the only allowed value is "forceToLowerCase" to force input to be automatically changed to lowercase)
+    ;       @subtree@("force") = the behavior of the parser to force when parsing this literal.
     ; This is the basic building block of any grammer.
     ;
     ; 3) subtreeChain:
@@ -70,7 +73,7 @@ PARSER1
     ;       @subtree(2) = the 2nd subtree making up the subtree chain.  Any valid @map@ root is valid here (without the human-readable description).
     ;       ...
     ;       @subtree(n) = the nth subtree making up the subtree chain.  Any valid @map@ root is valid here (without the human-readable description).
-    ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in this or deeper subtrees.
+    ;       @subtree@("force") = the behavior of the parser to force when parsing this or deeper subtrees.
     ; This is the way to string together a list of other subtrees that must occur one after another.
     ; For instance, you could use this type of subtree to define a structure of the form "(" + somethingElse + ")".
     ;
@@ -80,7 +83,7 @@ PARSER1
     ;       @subtree@(2) = 2nd option.  Any valid subtree is valid here
     ;       ...
     ;       @subtree@(n) = nth option.  Any valid subtree is valid here.
-    ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in this or deeper subtrees.
+    ;       @subtree@("force") = the behavior of the parser to force when parsing this or deeper subtrees.
     ; The straight-forward way to describe alternatives.
     ;
     ; 5) delimList:
@@ -88,28 +91,28 @@ PARSER1
     ;       @subtree@("delimiter") = A subtree defining the delimiter(s) of the list.  Any valid subtree is valid here.
     ;       @subtree@("content") = A subtree defining the contents of the list.
     ;                      Any valid subtree is valid here, including nested delimited lists and options.
-    ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in this or deeper subtrees.
+    ;       @subtree@("force") = the behavior of the parser to force when parsing this or deeper subtrees.
     ; Warning: It is frighteningly easy to create an ambiguous grammer if both the "delimiter" and "content" subtrees are complicated or contain overlapping symbols.
     ;
     ; 6) token:
     ;       @subtree = "token"
     ;       @subtree@("value") = the name of the token.  This should match some name occuring in the first coordinate of the @map
-    ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in this or deeper subtrees.
-    ; The way to refer to any other token defined in 'map'
+    ;       @subtree@("force") = the behavior of the parser to force when parsing this or deeper subtrees.
+    ; The way to refer to any other token defined in 'map'.  Tokens are "short-cuts" to reusable pieces of your grammer.
     ;
     ; The parser runs against a stream data structure containing lines of code to be parsed.
     ; Multiline data can be parsed from the stream by including the appropriate carriage returns and line breaks as part of the stream.
     ; (It is necessary to parse multiple lines in the ANSI 1995 MUMPS standard in order to handle external references properly.)
     ; The stucture of the data to be parsed is necessarilly of the form:
     ;   @codePointer = code to be parsed
-    ; Note that this structure pretty much sucks in MUMPS implementations where the max line length storable in a variable could be limited to 32000 characters.
+    ; Note that this structure pretty much sucks in those MUMPS implementations where the max line length storable in a variable could be limited to 32000 characters.
     ; It is, however, a great prototype of a stream reader, which is generic.
     ;
     ;
     ; ====  EXAMPLES  ====
     ; For example, say a token is made up of a literal string 'foo(', followed by a FEEP token, followed by a literal string ')bar'.
     ; We could define this as follows:
-    ;               @map@(tokenName)="subtreeChain"
+    ;       @map@(tokenName)="subtreeChain"
     ;       @map@(tokenName,1)="literal"
     ;       @map@(tokenName,1,"value")="foo("
     ;       @map@(tokenName,2)="token"
@@ -131,7 +134,7 @@ PARSER1
     ;   @map@("token2",3,"value")=")"
     ; The only example of this token is '(TOKEN_ONE)'
     ;
-    ;   @map@("token3") ="subtreeChain"
+    ;   @map@("token3")="subtreeChain"
     ;   @map@("token3",1)="literal"
     ;   @map@("token3",1,"value")="[["
     ;   @map@("token3",2)="delimList"
@@ -142,7 +145,7 @@ PARSER1
     ;   @map@("token3",3)="literal"
     ;   @map@("token3",3,"value")="]]"
     ; The following are examples:  '[[TOKEN_ONE]]' , '[[TOKEN_ONE::TOKEN_ONE]]' , and '[[TOKEN_ONE::TOKEN_ONE::TOKEN_ONE::TOLEN_ONE]]'
-    ; Notice that delimList does *not* allow empty lists of the content
+    ; Notice that delimList does *not* allow empty lists of the content, so '[[]]' is *not* a valid expression in this grammer.
     ;
     ; Here's a token describing an optional choice between token1, token3, and the string 'TOKEN_NULL' followed by the equal sign and an occurence of token2
     ;   @map@("token4")="subtreeChain"
@@ -245,11 +248,10 @@ PARSER1
     ;       (The map defined by @mapPointer must not have any instances of left-recursion!)
     ;   codePointer - a string pointer to the array holding the code to be parsed.
     ;   startColumn - the column of @codePointer to start the parse at.
-    ;   forceParseAs - If we want to force the parsing as a specific token, this parameter is used.  If this isn't set, then every token in @map will be tried.
-    ;   depth - An opaque variable tracking the current depth in the outParseTreePointer
     ; Returns the number of characters parsed.  Returns negative numbers in case of error.
 parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn) 
     q:$g(subTreePointer)="" "-1,missing subtreePointer"
+    q:$g(outParseTreePointer)="" "-1,missing outParseTreePointer"
     ; Recall that subtrees are of the generic form:
     ;       @subtree = subtree type
     ;       @subtree@(subnodes) = additional data.
@@ -259,7 +261,7 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;   3) "subtreeChain" to act as a string of subtrees when creating a new token is too much of a pain.
     ;   4) "options" to denote a list of options,
     ;   5) "delimList" to denote a delimited list, 
-    ;   6) "token" to reference another token
+    ;   6) "token" to reference a predefined token in the grammer
     ;
     n subTreeType,charsParsed,literalValue,tokenName,contentSubTreePointer,delimiterSubTreePointer,oldForce
     s subTreeType=@subTreePointer
@@ -269,7 +271,7 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     i $g(@subTreePointer@("force"))'="" s oldForce=$g(%parseControlForcing) n %parseControlForcing d
     . s %parseControlForcing=oldForce
     . n index,piece
-    . f index=1:1:$l(@subTreePointer@("force"),",") d
+    . f index=1:1:$l(@subTreePointer@("force"),",") d  ; update the comma-delimited list of forced behaviors
     . . s piece=$p(@subTreePointer@("force"),",",index)
     . . q:piece=""  q:%parseControlForcing[piece 
     . . s %parseControlForcing=piece_$s(%parseControlForcing="":"",1:","_%parseControlForcing)
@@ -308,10 +310,10 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;       @subtree@("force") = the behavior of the parser to force when parsing any literals defined in the deeper subtrees.
     ;               (An example value is "forceToLowerCase" to force input to be automatically changed to lowercase)
     ;               The forced behavior affects the parsing of this subtree and all sub-subtrees.
-    ;       @subtree(1) = the 1st subtree.  Any valid @map@ root is valid here (without the human-readable description).
-    ;       @subtree(2) = the 2nd subtree.  Any valid @map@ root is valid here (without the human-readable description).
+    ;       @subtree(1) = the 1st subtree.  Any valid subtree of the grammar definition tree is valid here
+    ;       @subtree(2) = the 2nd subtree.  Any valid subtree of the grammar definition tree is valid here
     ;       ...
-    ;       @subtree(n) = the nth subtree.  Any valid @map@ root is valid here (without the human-readable description).
+    ;       @subtree(n) = the nth subtree.  Any valid subtree of the grammar definition tree is valid here
     ; The parameters are as follows:
     ;   subTreePointer - a string pointer to the fragment of map describing the subtree we're parsing with
     ;   outParseTreePointer - a string pointer to the array in which the parse data will be held. This will hold a value of the form:
@@ -350,6 +352,7 @@ parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,star
     . s tempCodePosition=tempCodePosition+charsParsed
     . s outSubTreePosition=1+outSubTreePosition
     ;
+    ; If we parsed the chain of grammer elements without error, we'll merge the results into our parse tree and read further in the code stream
     i totalCharsParsed'<0,$g(%parseControlForcing)'["noStore" d
     . m @outParseTreePointer=@tmpOutParseRootPointer 
     . s @outParseTreePointer=$$readCodeStream(codePointer,startColumn,totalCharsParsed)
@@ -360,13 +363,13 @@ parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,star
     ; This handles the parsing of multiple options.  It's our only choice driver in the parser.
     ; Recall that the "options" type of subtree looks like this:
     ;       @subtree = "options"
-    ;       @subtree@(1) = 1st option.  Any valid subtree is valid here
-    ;       @subtree@(2) = 2nd option.  Any valid subtree is valid here
+    ;       @subtree@(1) = 1st option.  Any valid subtree of the grammar definition tree is valid here
+    ;       @subtree@(2) = 2nd option.  Any valid subtree of the grammar definition tree is valid here
     ;       ...
-    ;       @subtree@(n) = nth option.  Any valid subtree is valid here.
+    ;       @subtree@(n) = nth option.  Any valid subtree of the grammar definition tree is valid here
     ; This function works by parsing each subtree and recording the number of characters each subtree parsed as.
     ; The subtree that parsed as the largest number of characters is returned.
-    ; When parsing options, it's not uncommon for their to be multiple valid options.  
+    ; When parsing a list of possible options, it's not uncommon for their to be many valid options.  
     ; For instance, your grammer could define both "digit" and "number", which would make the parsing of "5" ambiuous.
     ; In determining which option is the "best" one we use 2 strategies to resolve the ambiguity:
     ;   A. 'Maximal Munch'.  The subtree representing the parsing path that consumes the greatest number of characters is considered the correct one.
@@ -383,10 +386,10 @@ parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,star
     ; (Where the 'digit','integer', and 'nonNegReal' tokens are defined elsewhere in some reasonable way.)
     ; If we're asked to parse the sybol "5", then the parse of digit, integer, and nonNegReal will all return that a single character was parsed.
     ; In this case, the value will be treated as a nonNegReal.
-    ; Note that cooking up a grammer where the "best" option is what you want can be deceptively hard.  YOU HAVE BEEN WARNED!!!
+    ; Note that cooking up a grammer where the "best" option is the one you really want can be deceptively hard.  YOU HAVE BEEN WARNED!!!
     ;
     ; The parameters are as follows:
-    ;   subTreePointer - a string pointer to the fragment of map describing the subtree we're parsing with
+    ;   subTreePointer - a string pointer to the fragment of grammer map describing the subtree we're parsing with
     ;   outParseTreePointer - a string pointer to the array in which the parse data will be held.  The parsed data will be held as
     ;                 @outParseTreePointer = the subtree of the "best" option
     ;   mapPointer - a string pointer to the array holding the map for parsing the tokens.
@@ -399,7 +402,7 @@ parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     n whichOption,tempSubTreePointer,tempOutParseTreePointer,amountParsed,maxParsed,bestOption
     ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
-    ; This is because we merge the parse tree pointers between the levels of the stack.
+    ; This is because we merge the parse tree pointers between this and deeper levels of the stack.
     n tmpOutParseRootPointer
     s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
@@ -415,7 +418,7 @@ parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     . ;
     . ; At this point, we know we have a new "best" option
     . s maxParsed=amountParsed
-    . k:$g(bestOption) tempParseTree(bestOption) ; We've got a new best option, so we don't the data from the old best option
+    . k:$g(bestOption) @tmpOutParseRootPointer@(bestOption) ; We've got a new best option, so we don't the data from the old best option
     . s bestOption=whichOption ; Note that this only gets set if at least on option returns non-negative (e.g. no error in parsing).
     ;
     ; Handle the edge case of an empty list of options.
@@ -464,7 +467,7 @@ parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;                 @outParseTreePointer@("delimiters",1)  = subtree of 1st delimiter
     ;                 @outParseTreePointer@("contents",2) = subtree of 2nd instance of list content
     ;                                     ...
-    ;                             @outParseTreePointer@("delimiters",n-1)  = subtree of n-1st delimiter
+    ;                 @outParseTreePointer@("delimiters",n-1)  = subtree of n-1st delimiter
     ;                 @outParseTreePointer@("contents",n)= subtree of the nth instance of list content
     ;   mapPointer - a string pointer to the array holding the map for parsing the tokens.
     ;   codePointer - a string pointer to the array holding the code to be parsed.
@@ -612,7 +615,7 @@ showParseTree(parseTreePointer) q:$g(parseTreePointer)="" "ERROR!!! no parseTree
     ;
     ; This function returns 1 exactly when we can expect a node to contain the complete definition of
     ; a subtree.
- ;definesCompleteSubtree(mapNode)
+    ;definesCompleteSubtree(mapNode)
     ;q:$g(mapNode)="" "-1, the mapNode parameter is required for the definesCompleteSubtree function"
     ;n sublen,lastSubscript
     ;s sublen=$ql(mapNode)
@@ -628,7 +631,7 @@ showParseTree(parseTreePointer) q:$g(parseTreePointer)="" "ERROR!!! no parseTree
     ; This function takes in a node of the grammer and returns 1 when the node defines a 'compiler directive' or other metadata.
     ; At present, the only meta-data we allow is "force", which can be set to "forceToLowerCase", but we're being a bit more general here.
     ; The function will return a negative in case of an error.
- ;isMetaData(mapNode) q:$g(mapNode)="" "-1, the mapNode parameter is required by the isMetaData function."
+    ;isMetaData(mapNode) q:$g(mapNode)="" "-1, the mapNode parameter is required by the isMetaData function."
     ;i $$definesCompleteSubtree(mapNode) q 0 ; subtrees are clearly not metadata
     ;i $qs(mapNode,$ql(mapNode))="value" q 0 ; tokens and literals are not metadata
     ;; Not actually checking just the "force" node adds some future-proofing to the code.
@@ -637,13 +640,9 @@ showParseTree(parseTreePointer) q:$g(parseTreePointer)="" "ERROR!!! no parseTree
     ;
     ; *******************************
     ;
-    ; This is a simple test-harness for the main parser tag.
-tester(out,map) n code,counter,$ET,charsParsed
-    s $ET="Write:(0=$STACK) "" Error '""_$zstatus_""' occurred at: ""_$st($st,""place"")"
-    ;
-    i $g(map)="" s map="tempData" n @map 
-    i $g(out)="" s out="tempOutData" n @out
-    ;
+    ; This function build a simple grammer using the structure we've defined above.
+    ; The grammer is pretty simplistic, and doesn't even admit very much arithmatic.
+buildTestGrammer(map) q:$g(map)=""
     ; This part of the map just defines the digits.
     ; There's just references to literals here.
     ; The digits 1, 2, 3, 4, 5, 6, 7, 8, and 9.
@@ -685,10 +684,11 @@ tester(out,map) n code,counter,$ET,charsParsed
     ; Note that "delimList", "options", "subtree", and the empty tree get exercised here.
     ; A floating point number with a finite number of digits
     s @map@("number")="subtreeChain"
+    s @map@("number","force")="noStore"
     s @map@("number",1)="options" ; These options are the things that preceed the decimal point
     s @map@("number",1,1)="token"
-    s @map@("number",1,1,"value")="zeroDigit"
-    s @map@("number",1,2)="subtreeChain"
+    s @map@("number",1,1,"value")="zeroDigit" ; a lone zero can come before the decimal
+    s @map@("number",1,2)="subtreeChain"      ; or a number that begins with a non-zero digit
     s @map@("number",1,2,1)="token"
     s @map@("number",1,2,1,"value")="nonzeroDigit"
     s @map@("number",1,2,2)="delimList"
@@ -720,30 +720,45 @@ tester(out,map) n code,counter,$ET,charsParsed
     ; Set up a token map for simple addition and parenthesis.
     ; Here's where we get to test our handling of recursion.
     ; A generic expression of digit addition
-    s @map@("expr")="options"
-    s @map@("expr",1)="token"  ; The first option for an expression is any number or product/quotient of numbers
-    s @map@("expr",1,"value")="product"
-    s @map@("expr",2)="subtreeChain" ; This will define "product + expr".
-    s @map@("expr",2,1)="token"
-    s @map@("expr",2,1,"value")="product"
-    s @map@("expr",2,2)="literal"
-    s @map@("expr",2,2,"value")="+"
-    s @map@("expr",2,3)="token"
-    s @map@("expr",2,3,"value")="expr"
-    s @map@("expr",3)="subtreeChain" ; This will define "(expr)".
-    s @map@("expr",3,1)="literal"
-    s @map@("expr",3,1,"value")="("
-    s @map@("expr",3,2)="token"
-    s @map@("expr",3,2,"value")="expr"
-    s @map@("expr",3,3)="literal"
-    s @map@("expr",3,3,"value")=")"
+    s @map@("numeric expression")="options"
+    s @map@("numeric expression",1)="token"  ; The first option for an expression is any number or product/quotient of numbers
+    s @map@("numeric expression",1,"value")="product"
+    s @map@("numeric expression",2)="subtreeChain" ; This will define "product + numeric expression".
+    s @map@("numeric expression",2,1)="token"
+    s @map@("numeric expression",2,1,"value")="product"
+    s @map@("numeric expression",2,2)="literal"
+    s @map@("numeric expression",2,2,"value")="+"
+    s @map@("numeric expression",2,3)="token"
+    s @map@("numeric expression",2,3,"value")="numeric expression"
+    s @map@("numeric expression",3)="subtreeChain" ; This will define "(expr)".
+    s @map@("numeric expression",3,1)="literal"
+    s @map@("numeric expression",3,1,"value")="("
+    s @map@("numeric expression",3,2)="token"
+    s @map@("numeric expression",3,2,"value")="numeric expression"
+    s @map@("numeric expression",3,3)="literal"
+    s @map@("numeric expression",3,3,"value")=")"
+    ;
+    q
+    ;
+    ;
+    ; This is a simple test-harness for the main parser tag.
+tester(out,map) n code,counter,$ET,charsParsed
+    s $ET="Write:(0=$STACK) "" Error '""_$zstatus_""' occurred at: ""_$st($st,""place"")"
+    ;
+    i $g(map)="" s map="tempData" n @map 
+    i $g(out)="" s out="tempOutData" n @out
+    ;
+    ; Build a grammer
+    d buildTestGrammer(map)
+    ;
+    ; Set up some numeric expressions to parse
+    s code(1)="1",code(2)="2.04",code(3)="0.3",code(4)="200.0004",code(5)="1+1",code(6)="1.3+5",code(7)="(3+1)",code(8)="(4)+12.1",code(9)="1+(2+(3+4.3))+2.1",code(10)="0.2+3.8+(0.0)"
     ;
     ; Now we parse something
-    s code(1)="1",code(2)="2.04",code(3)="0.3",code(4)="200.0004",code(5)="1+1",code(6)="1.3+5",code(7)="(3+1)",code(8)="(4)+12.1",code(9)="1+(2+(3+4.3))+2.1"
     s counter=""
     f  s counter=$o(code(counter)) q:counter=""  d
     . w !,!,"Testing parse of "_code(counter)_"...  "
-    . s charsParsed=$$parseToken("expr",out,map,"code("_counter_")",1)
+    . s charsParsed=$$parseToken("numeric expression",out,map,"code("_counter_")",1)
     . w !,"Return value of parse for '"_code(counter)_"' = "_charsParsed
     . w !,"Parsed string: '"_$e(code(counter),1,charsParsed)_"'"
     . ;
