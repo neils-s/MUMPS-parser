@@ -25,7 +25,7 @@ PARSER2
     ; to an abstract syntax tree to produce an optimized (or at least 'improved') version of the tree that embodies the same functionality
     ; but functions more effeciently.
     ;
-        ; This routine contains a small collection of helper-functions that make it easier to use one tree as a 'template' to build another.
+    ; This routine contains a small collection of helper-functions that make it easier to use one tree as a 'template' to build another.
     ; These functions are applied recursively to the source tree, and will be used to build the destination tree.
     ; There is also a general 'evaluate' function that can evaluate a 'tree-building rule' expressed as MUMPS code.
     ;
@@ -154,7 +154,7 @@ PARSER2
     ; With the strategies we've outlined above, we can simplify to a tree like this:
     ;                    declaration
     ;                    /         \
-    ;           type_spec       \
+    ;           type_spec           \
     ;                 /             declarator
     ;                INT              /      \
     ;                           pointer    identifier
@@ -220,15 +220,15 @@ PARSER2
     ;         - Add a key/value pair to the cache at the current %treeDepth level
     ;         - Add a key/value pair to the cache at %treeDepth level 0
     ;         - Update the pointer to the target tree
-    ;     - Set/build/destroy a node in the target tree
+    ;         - Set/build/destroy a node in the target tree
     ;         - Do nothing
     ;   2) After the action, evaluate the rule.  The rule will have access to this information
     ;         - Cached values.  The retrieval of a cached key/value pair will cascade down the stack to %treeDepth level 0 to try to retrieve data.
-    ;     - Current returnVal.
-    ;     - Array of data returned from the tree-crawler's action on the children of the current source node.
-    ;     - The value at the current source node
-    ;     - the value of the current target node
-    ;     - Boolean logic
+    ;         - Current returnVal.
+    ;         - Array of data returned from the tree-crawler's action on the children of the current source node.
+    ;         - The value at the current source node
+    ;         - the value of the current target node
+    ;         - Boolean logic
     ;   3) If the RULE is blank, we've reached a stopping point in the rule tree
     ;   4) If the RULE returns true, then the rule tree is followed down the 'true' branch to more ACTIONs and RULEs.
     ;   5) If the RULE returns false, then the rule tree is followed down the 'false' branch to more ACTIONs and RULEs.

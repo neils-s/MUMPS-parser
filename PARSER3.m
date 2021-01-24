@@ -96,7 +96,7 @@ countTokenReferences(outListPointer,mapPointer,token)
     q:$g(outListPointer)="" "-1, outListPointer parameter is required by $$findReferences"
     q:$g(mapPointer)="" "-2, mapPointer parameter is required by $$findReferences"
     q:$g(token)="" "-3, token parameter is required by $$findReferences"
-    q:'$d(@mapPointer@(token)) "-4, token "_token_" doesn't exist in the grammer map referenced by "_mapPointer
+    q:'$d(@mapPointer@(token)) "-4, token '"_token_"' doesn't exist in the grammer map referenced by '"_mapPointer_"'"
     ;
     n sourceNode,ruleTree ; This ruleTree will encompass the rules for finding all tokens
     s ruleTree("action")="" 
@@ -134,6 +134,51 @@ buildReferenceTree(outTreePointer,mapPointer)
     q:$g(returned)<0 returned
     q:'$d(returned) 0
     q 1
+    ;
+    ; *******************************
+    ;
+    ; Creates a list of all of the tokens that are referenced by the grammer but have not been defined in the grammer.
+findUndefinedTokens(outTreePointer,mapPointer)
+    q:$g(outTreePointer)="" "-1, outListPointer parameter is required by $$findUndefinedTokens"
+    q:$g(mapPointer)="" "-2, mapPointer parameter is required by $$findUndefinedTokens"
+    ;
+    n referenceTree,returned,sourceToken,targetToken,returnVal
+    s returned=$$buildReferenceTree("referenceTree",mapPointer)
+    q:returned<0 returned
+    ;
+    s returnVal=0
+    s sourceToken="" f  s sourceToken=$o(referenceTree(sourceToken)) q:sourceToken=""  d
+    . s targetToken="" f  s targetToken=$o(referenceTree(sourceToken,targetToken)) q:targetToken=""  d
+    . . i $d(@mapPointer@(targetToken)) q
+    . . s @outTreePointer@("undefined",targetToken,sourceToken)=$g(@outTreePointer@("undefined",targetToken,sourceToken))+1
+    . . s returnVal=returnVal+1
+    ;
+    q returnVal
+    ;
+    ; *******************************
+    ;
+    ; Produces a list of tokens that are defined in the grammer, but are never referenced by other tokens.
+    ; In principle, this list will be the "root" tokens of the grammer.
+findUnusedTokens(outTreePointer,mapPointer)
+    q:$g(outTreePointer)="" "-1, outListPointer parameter is required by $$findUndefinedTokens"
+    q:$g(mapPointer)="" "-2, mapPointer parameter is required by $$findUndefinedTokens"
+    ;
+    n referenceTree,returned,sourceToken,targetToken,returnVal
+    s returned=$$buildReferenceTree("referenceTree",mapPointer)
+    q:returned<0 returned
+    ;
+    ; Put everything in the list of unused tokens
+    s sourceToken="" f  s sourceToken=$o(@mapPointer@(sourceToken)) q:sourceToken=""  d
+    . s @outTreePointer@("unused",sourceToken)=""
+    . s returnVal=$g(returnVal)+1
+    ;
+    s sourceToken="" f  s sourceToken=$o(referenceTree(sourceToken)) q:sourceToken=""  d
+    . s targetToken="" f  s targetToken=$o(referenceTree(sourceToken,targetToken)) q:targetToken=""  d
+    . . i '$d(@outTreePointer@("unused",targetToken)) q
+    . . k @outTreePointer@("unused",targetToken)
+    . . s returnVal=returnVal-1
+    ;
+    q returnVal
     ;
     ; *******************************
     ;

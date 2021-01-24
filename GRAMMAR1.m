@@ -2588,7 +2588,7 @@ loadCommands(array)
     s array("openparameters")="options"
     s array("openparameters",1)="subtreeChain"
     s array("openparameters",1,1)="token"
-    s array("openparameters",1,1,"value")="deviceparameters"
+    s array("openparameters",1,1,"value")="deviceParameters"
     s array("openparameters",1,2)="options"
     s array("openparameters",1,2,1)=""
     s array("openparameters",1,2,2)="subtreeChain"
@@ -2605,7 +2605,7 @@ loadCommands(array)
     s array("openparameters",2,1)="options"
     s array("openparameters",2,1,1)=""
     s array("openparameters",2,1,2)="token"
-    s array("openparameters",2,1,2,"value")="deviceparameters"
+    s array("openparameters",2,1,2,"value")="deviceParameters"
     s array("openparameters",2,2)="literal"
     s array("openparameters",2,2,"value")="::"
     s array("openparameters",2,3)="token"
@@ -2649,27 +2649,6 @@ loadCommands(array)
     s array("openCommand",4,"delimiter","value")="comma"
     s array("openCommand",4,"content")="token"
     s array("openCommand",4,"content","value")="openargument"
-    ;
-    s array("openCommand")="subtreeChain"
-    s array("openCommand",1)="options"
-    s array("openCommand",1,"force")="forceToLowerCase"
-    s array("openCommand",1,1)="literal"
-    s array("openCommand",1,1,"value")="q"
-    s array("openCommand",1,2)="literal"
-    s array("openCommand",1,2,"value")="quit"
-    s array("openCommand",2)="token"
-    s array("openCommand",2,"value")="postcond"
-    s array("openCommand",3)="token"
-    s array("openCommand",3,"value")="SP"
-    s array("openCommand",4)="options"
-    s array("openCommand",4,1)=""
-    s array("openCommand",4,2)="token"
-    s array("openCommand",4,2,"value")="expr"
-    s array("openCommand",4,3)="subtreeChain"
-    s array("openCommand",4,3,1)="token"
-    s array("openCommand",4,3,1,"value")="atSign"
-    s array("openCommand",4,3,2)="token"
-    s array("openCommand",4,3,2,"value")="expratom"
     ;
     s array("quitCommand")="subtreeChain"
     s array("quitCommand",1)="options"
@@ -3495,7 +3474,7 @@ loadRoutineStructure(array)
     ;
     ;
 loadAll(array)
-    s array("expratom")="" ; for testing purposes
+    ;s array("expratom")="" ; for testing purposes
     s %=$$loadChars(.array)
     s %=$$loadStrings(.array)
     s %=$$loadNumbers(.array)
@@ -3510,7 +3489,7 @@ loadAll(array)
     ;
 tester()
     ; TODO:  Finish this!!!
-    n grammar,outList,codeToParse,outTree
+    n grammar,outList,codeToParse,outTree,parseCount
     s %=$$loadAll(.grammar)
     ; zwrite grammar
     ;
@@ -3540,6 +3519,13 @@ tester()
     k outTree
     s codeToParse="s $ec="""",x=4,fop=10"
     w !,$$parseToken^PARSER1("commands","outTree","grammar","codeToParse",1),!
+    zwrite outTree
+    ;
+    k outTree,codeToParse
+    s %=$$generateToken^GENERATOR1("command","codeToParse","grammar",15)
+    w !,"Randomly generated code to parse: ",!,codeToParse
+    s parseCount=$$parseToken^PARSER1("command","outTree","grammar","codeToParse",1)
+    w !,parseCount_" characters parsed.  This is a "_$s(parseCount=$l(codeToParse):"success!",1:"failure!"),!
     zwrite outTree
     ;
     q

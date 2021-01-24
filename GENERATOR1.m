@@ -1,5 +1,5 @@
 GENERATOR1
-    ; Copyright (C) 2017-2020 Neils Schoenfelder
+    ; Copyright (C) 2017-2021 Neils Schoenfelder
     ; 
     ; This program is free software; you can redistribute it and/or
     ; modify it under the terms of the GNU General Public License
@@ -86,31 +86,37 @@ generateSubtree(subTreePointer,generatedResultPointer,mapPointer,depthSeed)
     n subTreeType,charsBuilt,literalValue,contentSubTreePointer,delimiterSubTreePointer,tokenName
     s subTreeType=@subTreePointer
     ;
-    i subTreeType="" d
+    ; First check for any specialized generator code
+    i $d(@subTreePointer@("generatorXecutable")) x @subTreePointer@("generatorXecutable")
+    s charsBuilt=$g(charsBuilt)
+    ;
+    ; Now generate the subtree using the normal algorithm
+    i charsBuilt="",subTreeType="" d 
     . i $d(@subTreePointer)<10 s charsBuilt=0
     . e  s charsBuilt="-4,subtrees with no type should be empty arrays." ; this is one way to limit left-recursive structures in the grammer
     ;
-    i subTreeType="literal" d
+    i charsBuilt="",subTreeType="literal" d
     . s literalValue=@subTreePointer@("value")
     . s charsBuilt=$$generateLiteral(literalValue,generatedResultPointer)
     ;
-    i subTreeType="subtreeChain" d
+    i charsBuilt="",subTreeType="subtreeChain" d
     . s charsBuilt=$$generateSubtreeChain(subTreePointer,generatedResultPointer,mapPointer,depthSeed)
     ;
-    i subTreeType="options" d
+    i charsBuilt="",subTreeType="options" d
     . s charsBuilt=$$generateOptions(subTreePointer,generatedResultPointer,mapPointer,depthSeed)
     ;
-    i subTreeType="delimList" d
+    i charsBuilt="",subTreeType="delimList" d
     . s contentSubTreePointer=$name(@subTreePointer@("content"))
     . s delimiterSubTreePointer=$name(@subTreePointer@("delimiter"))
     . s charsBuilt=$$generateDelimList(contentSubTreePointer,delimiterSubTreePointer,generatedResultPointer,mapPointer,depthSeed)
     ;
-    i subTreeType="token" d
+    i charsBuilt="",subTreeType="token" d
     . s tokenName=@subTreePointer@("value")
     . s charsBuilt=$$generateToken(tokenName,generatedResultPointer,mapPointer,depthSeed)
     ;
-    i '$d(charsBuilt) s charsBuilt="-2,unknown subTreeType: "_subTreeType BREAK  ; TODO:  Get rid of BREAK
-    q +$g(charsBuilt)
+    i charsBuilt="" s charsBuilt="-2,unknown subTreeType: "_subTreeType
+    i charsBuilt<0 BREAK ; TODO: Get rid of BREAK
+    q charsBuilt
     ;
     ;
     ; This generates subtreeChains.
@@ -136,7 +142,7 @@ generateSubtreeChain(subTreePointer,generatedResultPointer,mapPointer,depthSeed)
     f whichChain=1:1 q:'$d(@subTreePointer@(whichChain))  d
     . s charsBuilt=$g(charsBuilt)+$$generateSubtree($name(@subTreePointer@(whichChain)),generatedResultPointer,mapPointer,depthSeed)
     ;
-    q +$g(charsBuilt)
+    q $g(charsBuilt)
     ;
     ;
     ; This generated data by choosing randomly between multiple options.
@@ -169,7 +175,7 @@ generateOptions(subTreePointer,generatedResultPointer,mapPointer,depthSeed)
     s whichOption=$r(optionCount)+1
     s charsBuilt=$$generateSubtree($name(@subTreePointer@(whichOption)),generatedResultPointer,mapPointer,depthSeed) 
     ;
-    q +$g(charsBuilt)
+    q $g(charsBuilt)
     ;
     ;
     ; This generates a delimited list.
@@ -202,7 +208,7 @@ generateDelimList(contentSubTreePointer,delimiterSubTreePointer,generatedResultP
     ;
     f  s charsBuilt=$g(charsBuilt)+$$generateSubtree(contentSubTreePointer,generatedResultPointer,mapPointer,depthSeed)  q:$r(depthSeed)<$st  s charsBuilt=charsBuilt+$$generateSubtree(delimiterSubTreePointer,generatedResultPointer,mapPointer,depthSeed) ; Probabalisticly stop for large stack depths
     ;
-    q +$g(charsBuilt)
+    q $g(charsBuilt)
     ;
     ;
     ;
@@ -218,11 +224,12 @@ generateDelimList(contentSubTreePointer,delimiterSubTreePointer,generatedResultP
 generateToken(tokenName,generatedResultPointer,mapPointer,depthSeed)
     q:$g(tokenName)="" "-7, no token specified for syntax generation."
     q:$g(mapPointer)="" "-8, no map pointer specified.  Can't resolve token definition."
+    q:'$d(@mapPointer@(tokenName)) "-9, token "_tokenName_" not found in the grammer map located at "_mapPointer
     ;
     n charsBuilt
     s charsBuilt=$$generateSubtree($name(@mapPointer@(tokenName)),generatedResultPointer,mapPointer,depthSeed)
     ;
-    q +$g(charsBuilt)
+    q charsBuilt
     ;
     ;
     ; This function generates a specific string literal.
@@ -235,7 +242,7 @@ generateToken(tokenName,generatedResultPointer,mapPointer,depthSeed)
     ; (Of course, the number of characters built should be the length of the literalValue)
 generateLiteral(literalValue,generatedResultPointer)
     q:$g(generatedResultPointer)="" "-1,no generatedResultPointer specified."
-    q:$g(literalValue)="" "-9,an empty literal value is left-recursive and forces an infinite loop."
+    ;q:$g(literalValue)="" "-10,an empty literal value should use an empty subtree instead."
     ;
     s @generatedResultPointer=$g(@generatedResultPointer)_literalValue
     q $l(literalValue)
