@@ -27,20 +27,14 @@ PARSER5
     ; To model a railroad-track-style syntax diagram, we use kind of directed graph.
     ; The nodes of this graph can be string literals, or can refer to other graphs.
     ;
-    ; A "parse position" is some pointer to the input string of code that we're trying to parse.
-    ; Typically, this parse position will just be an integer that we can feed to a $extract function.
-    ; In the future, it might be changed to be a line number + character offset, or something else.
-    ; Whatever form it takes, there has to be a way to add an integer to it.
-    ; This will be used to 'move our read pointer' along the input string.
-    ;
     ; Define an "Ordered Path Graph" as a directed graph with the following properties:
     ;    1) There is some unique node with no incoming arrows.
     ;       This is the "start" node of the ordered path graph.
     ;    2) There is some unique node with no outgoing arrows.
     ;       This is the "end" node of the ordered path graph.
     ;    3) For each node, there is some fixed ordering of it's outgoing arrows.
-    ;    4) Each node contains non-empty list of "node type" describing it.
-    ;       For us, this will just be a string describing an element of the grammar.
+    ;    4) Each node contains a non-empty list of "node types" describing it.
+    ;       For us, each "node type" will just be a string describing an element of the grammar.
     ;       Note that for a given node, this stack may consist of just a single empty string.
     ;    5) Each node contains an "expected Parseable" object that is either
     ;          i.  A string literal (possibly the empty string), or
@@ -50,7 +44,13 @@ PARSER5
     ;    a) The arrows out from that node
     ;    b) The arrows into that node.
     ;
-    ; Define a "parse path" an ordered list of tuples, each of which contains the following:
+    ; A "parse position" is some pointer into the input string of code that we're trying to parse.
+    ; Typically, this parse position will just be an integer that we can feed to a $extract function.
+    ; In the future, it might be changed to be a line number + character offset, or something else.
+    ; Whatever form it takes, there has to be a way to add an integer to it.
+    ; This will be used to 'move our read pointer' along the input string.
+    ;
+    ; Define a "parse path" to be an ordered list of tuples, each of which contains the following:
     ;    1) A node from an ordered path graph
     ;    2) An outgoing arrow from that node
     ;    3) a parse position describing how far we've read along the input string to get to this point
@@ -92,7 +92,7 @@ PARSER5
     ; 
     ;
     ; ==== SKETCH OF ALGORITHMS ====
-    ; Given 2 graphs, we can surgically paste one into the other as follows:
+    ; Given 2 graphs, we can surgically paste one into the other by replacing a specified node.
     ; Define a way of surgically adding graphs as follows:
     ;    SurgicallyAddSugbraph(aGraph, aNode, subGraphTemplate)
     ;        If aNode is not part of aGraph, then throw an error
@@ -111,6 +111,7 @@ PARSER5
     ;           change the arrow so it points from subEndNode
     ;        Delete aNode
     ;        Return aGraph
+    ;
     ; Note that the SurgicallyAddSugbraph function mangles aGraph by replacing
     ; aNode with a copy of subGraphTemplate.  Also, the list of what's
     ; been replaced has been kept in the list of node types in the graph.
@@ -162,8 +163,8 @@ PARSER5
     ;                "" --<           1  --- ab ---              >-- ""
     ;                    2 \           /            \           /
     ;                       a -- "" --<              >-- "" -- b
-    ;                                  2 \            /
-    ;                                     a -- AB -- b
+    ;                                2 \            /
+    ;                                   a -- AB -- b
     ; On this extended graph, the string "aabb" parses by taking path (2) and then path (1) as follows:
     ;                "" --<           1  --- ab ---              >-- ""
     ;                    2 \           /            \           /
@@ -204,6 +205,7 @@ PARSER5
     ;       ; ////// Sanity Check: /////
     ;       Else throw error:"expected parsable from node is not a string or a pointer to another graph"
     ;       GOTO Traverse+1
+    ;
     ; The Traverse function doesn't have any recursion, so it's very MUMPS-friendly, and won't lead to <STACK> errors.
     ; Unfortunately, it does build a potentially HUGE graph by repeated surgical insertions of subgraphs.
     ; This could burn up a lot of in-process memory, leading to <STORE> errors.
@@ -226,6 +228,7 @@ PARSER5
     ; marker that we'd have to replace, and so on, and so on, and so on forever.
     ; 
     ; As always, with any Top-down parser, watch out for instances of left-recursive grammars.
+    ;
     ;
     ; =====================================================================================
     ; ===================================== CORE CODE =====================================
@@ -460,7 +463,8 @@ setEndNode(aGraph,aNode)
     ; removed and replaced.
 surgicallyAddSugbraph(aGraph,aNode,subGraphTemplates)
     q:$$nodeDataType(aGraph,aNode)'="subgraph" "" ; Make sure the node data isn't a string literal
-    n nodeData,subgraphCopy,oldNode,newNode,nodeStack,crosswalk,dataType,anArrow,sourceNode,targetNode,startNode,endNode,arrowsList
+    n nodeData,subgraphCopy,oldNode,newNode,nodeStack,crosswalk,dataType,sourceNode
+    n anArrow,targetNode,startNode,endNode,arrowsList,newStartNode,newEndNode
     s nodeData=$$nodeData(aGraph,aNode)
     m subgraphCopy=@subGraphTemplates@(nodeData)
     ; Add the nodeStack from aNode to each node in subgraphCopy
@@ -473,6 +477,13 @@ surgicallyAddSugbraph(aGraph,aNode,subGraphTemplates)
     . s dataType=$$nodeDataType("subgraphCopy",oldNode)
     . s newNode=$$addNode(aGraph,dataType,.nodeStack)
     . s crosswalk(oldNode)=newNode
+    ; Reset the startNode or endNode of the new graph if necessary
+    i aNode=$$startNode(aGraph) d
+    . s newStartNode=crosswalk($$startNode("subgraphCopy"))
+    . s %=$$setStartNode(aGraph,newStartNode)
+    i aNode=$$endNode(aGraph) d
+    . s newEndNode=crosswalk($$endNode("subgraphCopy"))
+    . s %=$$setEndNode(aGraph,newEndNode)
     ; Add the arrows of the subgraph into aGraph
     s anArrow=""
     f  s anArrow=$o(subgraphCopy("arrows",anArrow)) q:anArrow=""  d
@@ -530,7 +541,7 @@ readFromParsePosition(parsePosition,expectedText,inputText)
     ; that someday parsePosition will be a line+collumn pair, rather
     ; than a simple integer.
 parsePositionIsEnd(parsePosition,inputText)
-    q $s(parsePosition<$l(inputText):0,1:1)
+    q $e(inputText,parsePosition)=""
     ;
     ;
     ; ===== Parse Path managers =====
@@ -629,9 +640,9 @@ pathNodes(aPath,aGraph,out)
     ;
     ;
     ; Returns the length of the input string that has been parsed in this path
-pathStringLength(aPath,aGraph)
-    n pos,nodeCount,aNode,pathStringLength,out
-    s nodeCount=$$pathNodes(aPath,aGraph,.out)
+pathStringLength(aPath,aGraph,nodeCount)
+    n pos,aNode,pathStringLength,out
+    s:+$g(nodeCount)<1 nodeCount=$$pathNodes(aPath,aGraph,.out)
     s pathStringLength=0
     f pos=1:1:nodeCount d
     . s aNode=out(pos)
@@ -646,23 +657,29 @@ pathStringLength(aPath,aGraph)
     ; This function tries to find a parse path through a grammar graph.
     ; It does this by selectively expanding the grammar graph when necessary,
     ; and by appending and backtracking the path.
-    ; It returns the length of the string parsed by the longest path found in the parse
-    ; To get the actual longest path, you need to pass in a dotted longestPath parameter
+    ; It returns 1 if it found a path through the grammar that consumed the entire inputText.
+    ; If it couldn't find a path through the grammar graph that used up all of the inputText,
+    ; then it will return a 0.
+    ;
+    ; To get the actual longest path, you need to pass in a dotted longestPath parameter.
+    ; Recall that the longestPath is made up of arrows.  So if the Traverse operation did
+    ; not return a success, it means that the last arrow of the longestPath points at an
+    ; end node that did not parse correctly.
 Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
-    n pathLength,parsePosition,lastNode,STOP,nodeDataType,thisPath,thisPathStringLength,longestPathStringLength,newNode,expectedString
+    n pathLength,parsePosition,lastNode,STOP,SUCCESS,nodeDataType,thisPath,thisPathStringLength,longestPathStringLength,newNode,expectedString
     k longestPath
-    s STOP=0
+    s STOP=0,SUCCESS=0
     f  d  q:STOP  ; Traverse the ordered grammar graph to find the first path through it.
     . s pathLength=$$endOfPath("thisPath",aGraph,.lastNode,.parsePosition) ; Get the last node in the path and the parse position corresponding to that node
     . i pathLength=0 d  ; Handle the case where the path is empty.
     . . s lastNode=$$startNode(aGraph) ; the path may be empty, so we need to start at the beginning of the graph
     . . s %=$$initializeParsePosition(.parsePosition) ; If the path is empty, we also need an initial parse position
     . s nodeDataType=$$nodeDataType(aGraph,lastNode)
-    . ;i nodeDataType'="subgraph",nodeDataType'="string" s $EC=",Uunknown node data type '"_nodeDataType_"'," ; This should never happen!
     . i nodeDataType="subgraph" d  q  ; If lastNode is a subgraph pointer, we need to surgically paste a copy of that subgraph into our graph
     . . s newNode=$$surgicallyAddSugbraph(aGraph,lastNode,indexedGraphTemplates) ; dynamically build the ordered syntax graph as needed
     . . i pathLength=0 q  ; If our path was empty, we don't need to tinker with the (non-existant) last arrow in the path
-    . . s %=$$removeLastArrowFromPath("thisPath") ; get rid of the arrow that pointed at lastNode
+    . . s pathLength=$$removeLastArrowFromPath("thisPath") ; get rid of the arrow that pointed at lastNode
+    . . i pathLength=0 q  ; If we've manipulated the first node of the syntax graph, we'll restart our parse with an empty path
     . . s %=$$appendNodeToPath("thisPath",aGraph,newNode,parsePosition) ; notice that in the next iteration of the loop, newNode will end up as lastNode
     . i nodeDataType="string" d  q
     . . s expectedString=$$nodeData(aGraph,lastNode) ; Get information from the graph that we're trying to parse against.
@@ -676,10 +693,10 @@ Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
     . . . m longestPath=thisPath
     . . . s longestPathStringLength=thisPathStringLength
     . . i lastNode=$$endNode(aGraph) d  ; We've hit the end of the syntax graph, so we need to do some special checking
-    . . . i $$parsePositionIsEnd(parsePosition,inputText) s STOP=1 q  ; We've also run out of characters to parse, so we're done
+    . . . i $$parsePositionIsEnd(parsePosition,inputText) s STOP=1,SUCCESS=1 q  ; We've also run out of characters to parse, so we're done
     . . . s:$$backtrackPathToLastBranch("thisPath",aGraph)<1 STOP=1 ; We've run out of input text but we haven't hit the end of the graph, so we try to backtrack.
     . s $EC=",Uunknown node data type '"_nodeDataType_"'," ; This should never happen!
-    q $$pathStringLength("longestPath",aGraph)
+    q SUCCESS
     ; 
     ;
     ; ====================================================================================
@@ -688,8 +705,16 @@ Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
     ; TODO: Write test cases to make sure that surgically adding subgraphs also updates the start and end node if necessary
     ;
 tester()
+    d testAB()
+    d testABB()
+    d testAAABB()
+    q
+    ;
+    ;
+testAB()
+    n myIndexedGraphTemplates,myGraph,replacementNode,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
+    ;
     ; Test graph building
-    n myIndexedGraphTemplates,myGraph,replacementNode
     w !,"Building syntax template for an AB map..."
     w $s($$buildSyntaxMapForAB("myIndexedGraphTemplates"):"Success!",1:"Failure!")
     w ! zw myIndexedGraphTemplates
@@ -704,18 +729,93 @@ tester()
     w ! zw myGraph
     ;
     ; Test path parsing
-    n longestPath,stringToParse,longestPathLength,longestPathNodes
     s stringToParse="AAABBB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    q
+    ;
+    ;
+testABB()
+    n myIndexedGraphTemplates,myGraph,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
+    ;
+    ; Test graph building
+    w !,"Building syntax template for an ABB map..."
+    w $s($$buildSyntaxMapForABB("myIndexedGraphTemplates"):"Success!",1:"Failure!")
+    w ! zw myIndexedGraphTemplates
+    ;
+    m myGraph=myIndexedGraphTemplates("ABB") ; Make a local copy of the graph
+    ;
+    ; Test path parsing
+    s stringToParse="ABB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an unparsably short string
+    s stringToParse="AB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an unparsably long string
+    s stringToParse="ABBBB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an unparsable gibberish string
+    s stringToParse="CAB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an empty string
+    s stringToParse=""
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    q
+    ;
+    ;
+testAAABB()
+    n myIndexedGraphTemplates,myGraph,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
+    ;
+    ; Test graph building
+    w !,"Building syntax template for an AAABB map..."
+    w $s($$buildSyntaxMapForAAABB("myIndexedGraphTemplates"):"Success!",1:"Failure!")
+    w ! zw myIndexedGraphTemplates
+    ;
+    m myGraph=myIndexedGraphTemplates("AAABB") ; Make a local copy of the graph
+    ;
+    ; Test path parsing
+    s stringToParse="ABB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on a short string
+    s stringToParse="A"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an a long string
+    s stringToParse="ABBBB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an unparsable string
+    s stringToParse="BBBB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an unparsable gibberish string
+    s stringToParse="CAB"
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    ; Test path parsing on an empty string
+    s stringToParse=""
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    q
+    ;
+    ;
+tryParseAndReport(stringToParse,aGraph,graphTemplates)
+    n longestPath,SUCCESS,longestPathLength,longestPathNodes
     w !,"Using the graph to parse the string '"_stringToParse_"'."
-    s longestPathLength=$$Traverse("myGraph","myIndexedGraphTemplates",stringToParse,.longestPath)
-    w !,"The best parse parsed "_+longestPathLength_" characters."
-    w ! zw longestPath
-    w !,"The longest path contains "_$$pathNodes("longestPath","myGraph",.longestPathNodes)_" node(s):"
+    s SUCCESS=$$Traverse(aGraph,graphTemplates,stringToParse,.longestPath)
+    w !,"Graph traverse ",$s(SUCCESS:"succeeded.",1:"failed.")
+    w !,"The longest path contains "_$$pathNodes("longestPath",aGraph,.longestPathNodes)_" node(s):"
     w ! zw longestPathNodes
-    w ! zw myGraph
-    ;
-    ; TODO: Add more tests!!!
-    ;
+    s longestPathLength=$$pathStringLength("longestPath",aGraph)
+    w !,"The best parse "_$s(SUCCESS:"parsed",1:"failed at")_" "_+longestPathLength_" characters."
+    w ! zw longestPath
+    w ! zw @aGraph
     q
     ;
     ;
@@ -749,6 +849,129 @@ buildSyntaxMapForAB(graphTemplates)
     s %=$$addArrow(aTemplate,aNode(1),aNode(2))
     s %=$$addArrow(aTemplate,aNode(2),aNode(4))
     s %=$$addArrow(aTemplate,aNode(1),aNode(3))
+    s %=$$addArrow(aTemplate,aNode(3),aNode(4))
+    ;
+    q 1
+    ;
+    ;
+    ; Builds the following graph template:
+    ;           --- "A" ----
+    ; ABB:     /             \
+    ;    "" --<               >-- "BB"
+    ;          \             /
+    ;           --- "AB" ---
+    ; This will build the strings "ABB" and "ABBB".
+    ; Clearly, this is not the most effecient grammar to build these strings.
+    ; However, it is a nice way to make sure that our parser isn't "too greedy",
+    ; and doesn't get fooled into taking too big of a maximal munch when dealing
+    ; with different options.
+buildSyntaxMapForABB(graphTemplates)
+    n aTemplate,dataStack,aNode,templateName
+    s templateName="ABB"
+    s aTemplate=$na(@graphTemplates@(templateName))
+    ;
+    s dataStack(1)=""
+    s aNode(1)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setStartNode(aTemplate,aNode(1))
+    ;
+    s dataStack(1)="A"
+    s aNode(2)=$$addNode(aTemplate,"string",.dataStack)
+    ;
+    s dataStack(1)="AB"
+    s aNode(3)=$$addNode(aTemplate,"string",.dataStack)
+    ;
+    s dataStack(1)="BB"
+    s aNode(4)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setEndNode(aTemplate,aNode(4))
+    ;
+    ; Add in the ordered collection of arrows
+    s %=$$addArrow(aTemplate,aNode(1),aNode(2))
+    s %=$$addArrow(aTemplate,aNode(2),aNode(4))
+    s %=$$addArrow(aTemplate,aNode(1),aNode(3))
+    s %=$$addArrow(aTemplate,aNode(3),aNode(4))
+    ;
+    q 1
+    ;
+    ;
+    ; Builds the following graph templates:
+    ;  AAABB:
+    ;    START ---- END
+    ;            
+    ;              ---- "" ----
+    ;  START:    /              \ 
+    ;    "A" ---<                >-- ""
+    ;            \              / 
+    ;              --- START -- 
+    ;
+    ;             --- "" ---
+    ;  END:     /            \
+    ;    "B" --<              >-- ""
+    ;           \            /
+    ;             --- END --
+    ; This builds strings like "AAAA" or "AABBBB"
+buildSyntaxMapForAAABB(graphTemplates)
+    n aTemplate,dataStack,aNode,templateName
+    ;
+    ; Build AAABB graph template
+    s templateName="AAABB"
+    s aTemplate=$na(@graphTemplates@(templateName))
+    ;
+    s dataStack(1)="START"
+    s aNode(1)=$$addNode(aTemplate,"subgraph",.dataStack)
+    s %=$$setStartNode(aTemplate,aNode(1))
+    ;
+    s dataStack(1)="END"
+    s aNode(2)=$$addNode(aTemplate,"subgraph",.dataStack)
+    s %=$$setEndNode(aTemplate,aNode(2))
+    ;
+    s %=$$addArrow(aTemplate,aNode(1),aNode(2))
+    ;
+    ; Build START graph template
+    s templateName="START"
+    s aTemplate=$na(@graphTemplates@(templateName))
+    ;
+    k aNode
+    s dataStack(1)="A"
+    s aNode(1)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setStartNode(aTemplate,aNode(1))
+    ;
+    s dataStack(1)=""
+    s aNode(2)=$$addNode(aTemplate,"string",.dataStack)
+    ;
+    s dataStack(1)="START"
+    s aNode(3)=$$addNode(aTemplate,"subgraph",.dataStack)
+    ;
+    s dataStack(1)=""
+    s aNode(4)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setEndNode(aTemplate,aNode(4))
+    ;
+    s %=$$addArrow(aTemplate,aNode(1),aNode(2))
+    s %=$$addArrow(aTemplate,aNode(1),aNode(3))
+    s %=$$addArrow(aTemplate,aNode(2),aNode(4))
+    s %=$$addArrow(aTemplate,aNode(3),aNode(4))
+    ;
+    ; Build END grapn template
+    s templateName="END"
+    s aTemplate=$na(@graphTemplates@(templateName))
+    ;
+    k aNode
+    s dataStack(1)="B"
+    s aNode(1)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setStartNode(aTemplate,aNode(1))
+    ;
+    s dataStack(1)=""
+    s aNode(2)=$$addNode(aTemplate,"string",.dataStack)
+    ;
+    s dataStack(1)="END"
+    s aNode(3)=$$addNode(aTemplate,"subgraph",.dataStack)
+    ;
+    s dataStack(1)=""
+    s aNode(4)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setEndNode(aTemplate,aNode(4))
+    ;
+    s %=$$addArrow(aTemplate,aNode(1),aNode(2))
+    s %=$$addArrow(aTemplate,aNode(1),aNode(3))
+    s %=$$addArrow(aTemplate,aNode(2),aNode(4))
     s %=$$addArrow(aTemplate,aNode(3),aNode(4))
     ;
     q 1
