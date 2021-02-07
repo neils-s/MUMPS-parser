@@ -1,3 +1,4 @@
+ROUTINE PARSER5
 PARSER5
     ; Copyright (C) 2021 Neils Schoenfelder
     ; 
@@ -296,7 +297,7 @@ addToNodeStack(aGraph,aNode,in)
     s stackPosition=""
     f  s stackPosition=$o(in(stackPosition)) q:stackPosition=""  d
     . s stackHeight=1+$o(@aGraph@("nodes",aNode,"typeStack",""),-1)
-    . s @aGraph@("nodes",aNode,"typeStack",stackHeight)=in(stackPosition)
+    . m @aGraph@("nodes",aNode,"typeStack",stackHeight)=in(stackPosition)
     q 1
     ;
     ;
@@ -639,15 +640,21 @@ pathNodes(aPath,aGraph,out)
     q +$g(outPos)
     ;
     ;
-    ; Returns the length of the input string that has been parsed in this path
-pathStringLength(aPath,aGraph,nodeCount)
-    n pos,aNode,pathStringLength,out
+    ; Returns the string parsed by this path
+pathString(aPath,aGraph,nodeCount)
+    n pos,aNode,pathString,out
     s:+$g(nodeCount)<1 nodeCount=$$pathNodes(aPath,aGraph,.out)
-    s pathStringLength=0
+    s pathString=""
     f pos=1:1:nodeCount d
     . s aNode=out(pos)
-    . i $$nodeDataType(aGraph,aNode)="string" s pathStringLength=pathStringLength+$l($$nodeData(aGraph,aNode))
-    q pathStringLength
+    . i $$nodeDataType(aGraph,aNode)="string" s pathString=pathString_$$nodeData(aGraph,aNode)
+    q pathString
+    ;
+    ;
+    ; Returns the length of the input string that has been parsed in this path
+pathStringLength(aPath,aGraph,nodeCount)
+    q:$d(nodeCount) $l($$pathString(aPath,aGraph,nodeCount))
+    q $l($$pathString(aPath,aGraph))
     ;
     ;
     ; ===== The main graph traverser =====
@@ -689,15 +696,18 @@ Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
     . . i lastNode'=$$endNode(aGraph) s %=$$appendArrowToPath("thisPath",aGraph,$$firstOutgoingArrow(aGraph,lastNode),parsePosition)
     . . s thisPathStringLength=$$pathStringLength("thisPath",aGraph)
     . . i thisPathStringLength>$g(longestPathStringLength) d  ; Check if we've found a path that parses more of the input text
-    . . . k longestPath 
+    . . . k longestPath
     . . . m longestPath=thisPath
     . . . s longestPathStringLength=thisPathStringLength
     . . i lastNode=$$endNode(aGraph) d  ; We've hit the end of the syntax graph, so we need to do some special checking
-    . . . i $$parsePositionIsEnd(parsePosition,inputText) s STOP=1,SUCCESS=1 q  ; We've also run out of characters to parse, so we're done
+    . . . i $$parsePositionIsEnd(parsePosition,inputText) d  q  ; We've also run out of characters to parse, so we're done
+    . . . . s STOP=1,SUCCESS=1
+    . . . . k longestPath
+    . . . . m longestPath=thisPath
     . . . s:$$backtrackPathToLastBranch("thisPath",aGraph)<1 STOP=1 ; We've run out of input text but we haven't hit the end of the graph, so we try to backtrack.
     . s $EC=",Uunknown node data type '"_nodeDataType_"'," ; This should never happen!
     q SUCCESS
-    ; 
+    ;
     ;
     ; ====================================================================================
     ; ================================== TEST HARNESSES ==================================
@@ -708,6 +718,7 @@ tester()
     d testAB()
     d testABB()
     d testAAABB()
+    d testABABA()
     q
     ;
     ;
@@ -805,17 +816,41 @@ testAAABB()
     q
     ;
     ;
+testABABA()
+    n myIndexedGraphTemplates,myGraph,replacementNode,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
+    ;
+    ; Test graph building
+    w !,"Building syntax template for an ABABA map..."
+    w $s($$buildSyntaxMapForABABA("myIndexedGraphTemplates"):"Success!",1:"Failure!")
+    w ! zw myIndexedGraphTemplates
+    ;
+     m myGraph=myIndexedGraphTemplates("ABABA") ; Make a local copy of the graph
+    ;
+    ; Test path parsing
+    s stringToParse="ABA" ; the shortest possible string in this grammar
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    s stringToParse="ABABABA" ; a slightly longer string in this grammar
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    s stringToParse="AB" ; This won't parse
+    d tryParseAndReport(stringToParse,"myGraph","myIndexedGraphTemplates")
+    ;
+    q
+    ;
+    ;
 tryParseAndReport(stringToParse,aGraph,graphTemplates)
     n longestPath,SUCCESS,longestPathLength,longestPathNodes
     w !,"Using the graph to parse the string '"_stringToParse_"'."
     s SUCCESS=$$Traverse(aGraph,graphTemplates,stringToParse,.longestPath)
     w !,"Graph traverse ",$s(SUCCESS:"succeeded.",1:"failed.")
+    w !,"The longest path generates this string: '",$$pathString("longestPath",aGraph),"'"
     w !,"The longest path contains "_$$pathNodes("longestPath",aGraph,.longestPathNodes)_" node(s):"
     w ! zw longestPathNodes
     s longestPathLength=$$pathStringLength("longestPath",aGraph)
     w !,"The best parse "_$s(SUCCESS:"parsed",1:"failed at")_" "_+longestPathLength_" characters."
     w ! zw longestPath
-    w ! zw @aGraph
+    ;w ! zw @aGraph
     q
     ;
     ;
@@ -973,5 +1008,39 @@ buildSyntaxMapForAAABB(graphTemplates)
     s %=$$addArrow(aTemplate,aNode(1),aNode(3))
     s %=$$addArrow(aTemplate,aNode(2),aNode(4))
     s %=$$addArrow(aTemplate,aNode(3),aNode(4))
+    ;
+    q 1
+    ;
+    ;
+    ; Builds the following graph templates:
+    ;            ------
+    ;           /      \
+    ;  ABABA:  |        |
+    ;           \      /
+    ;   "" --- "AB" --<
+    ;                  \
+    ;                   --- "A"
+    ; Note that these graphs contain a cycle.
+    ; It generates strings like "ABA" and "ABABABABA"
+buildSyntaxMapForABABA(graphTemplates)
+    n aTemplate,dataStack,aNode,templateName
+    s templateName="ABABA"
+    s aTemplate=$na(@graphTemplates@(templateName))
+    ;
+    s dataStack(1)=""
+    s aNode(1)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setStartNode(aTemplate,aNode(1))
+    ;
+    s dataStack(1)="AB"
+    s aNode(2)=$$addNode(aTemplate,"string",.dataStack)
+    ;
+    s dataStack(1)="A"
+    s aNode(3)=$$addNode(aTemplate,"string",.dataStack)
+    s %=$$setEndNode(aTemplate,aNode(3))
+    ;
+    ; Add in the ordered collection of arrows
+    s %=$$addArrow(aTemplate,aNode(1),aNode(2))
+    s %=$$addArrow(aTemplate,aNode(2),aNode(2))
+    s %=$$addArrow(aTemplate,aNode(2),aNode(3))
     ;
     q 1
