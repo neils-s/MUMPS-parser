@@ -307,6 +307,27 @@ nodeDataType(aGraph,aNode)
     q @aGraph@("nodes",aNode)
     ;
     ;
+    ; Sets the extra data scalar that's been cached in this node (if any)
+    ; The dataPath parameter is a string containing a comma-delimited list.
+    ; The scalar will be stored in the location in the node defined by the dataPath parameter.
+setNodeExtraData(aGraph,aNode,dataPath,scalar)
+    n leadingPath,pos
+    s leadingPath=$na(@aGraph@("nodes",aNode,"typeStack",1))
+    f pos=1:1:$l(dataPath,",") s leadingPath=$na(@leadingPath@($p(dataPath,",",pos)))
+    s @leadingPath=scalar
+    q 1
+    ;
+    ;
+    ; Returns the extra data scalar that's been cached in this node (if any)
+    ; The dataPath parameter is a string containing a comma-delimited list.
+    ; The scalar will be stored in the location in the node defined by the dataPath parameter.
+getNodeExtraData(aGraph,aNode,dataPath)
+    n leadingPath,pos
+    s leadingPath=$na(@aGraph@("nodes",aNode,"typeStack",1))
+    f pos=1:1:$l(dataPath,",") s leadingPath=$na(@leadingPath@($p(dataPath,",",pos)))
+    q $g(@leadingPath)
+    ;
+    ;
     ; ===== Arrow-handling functions =====
     ; These functions return information about the arrows in the graph.
     ; They also add or remove arrows.
@@ -681,6 +702,9 @@ Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
     . i pathLength=0 d  ; Handle the case where the path is empty.
     . . s lastNode=$$startNode(aGraph) ; the path may be empty, so we need to start at the beginning of the graph
     . . s %=$$initializeParsePosition(.parsePosition) ; If the path is empty, we also need an initial parse position
+    . ; Store the original node label in the node data stack.  Assuming we never recycle node numbers, this tracks the "lineage" of nodes.
+    . i $$getNodeExtraData(aGraph,lastNode,"node ID")="",$$setNodeExtraData(aGraph,lastNode,"node ID",lastNode) ; Note that this data is only stored on nodes we try in our path
+    . ; Specific logic based on whether the node holds a string, or a pointer to a sub-graph template
     . s nodeDataType=$$nodeDataType(aGraph,lastNode)
     . i nodeDataType="subgraph" d  q  ; If lastNode is a subgraph pointer, we need to surgically paste a copy of that subgraph into our graph
     . . s newNode=$$surgicallyAddSugbraph(aGraph,lastNode,indexedGraphTemplates) ; dynamically build the ordered syntax graph as needed
@@ -850,7 +874,7 @@ tryParseAndReport(stringToParse,aGraph,graphTemplates)
     s longestPathLength=$$pathStringLength("longestPath",aGraph)
     w !,"The best parse "_$s(SUCCESS:"parsed",1:"failed at")_" "_+longestPathLength_" characters."
     w ! zw longestPath
-    ;w ! zw @aGraph
+    w ! zw @aGraph
     q
     ;
     ;
