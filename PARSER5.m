@@ -733,10 +733,69 @@ Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
     q SUCCESS
     ;
     ;
+    ; =====  Display Functions ======
+    ; These are functions that are useful outside of the core functionality of a parser.
+    ;
+    ;
+    ; This function emits a DOT language representation of a graph (https://graphviz.org/doc/info/lang.html)
+    ; The text that is produced can be fed into graphviz to produce a graphical representation
+    ; of the graph.
+emitGraphDot(aGraph,orderedListOfArrowsToEmphasize)
+    n arrowsToEmphasize,pos,val
+    i $d(orderedListOfArrowsToEmphasize)>1 d 
+    . s pos=""
+    . f  s pos=$o(orderedListOfArrowsToEmphasize(pos)) q:pos=""  d
+    . . s val=$g(arrowsToEmphasize(orderedListOfArrowsToEmphasize(pos,"arrow")))
+    . . s val=$s(val="":pos,1:val_","_pos)
+    . . s arrowsToEmphasize(orderedListOfArrowsToEmphasize(pos,"arrow"))=val
+    w !,"digraph{"
+    d emitNodesAndArrowsDot(aGraph,"",.arrowsToEmphasize)
+    w !,"}"
+    q
+    ;
+    ;
+    ; This function emits a DOT language representation of a collection of graph templates.
+emitGraphTemplatesDot(graphTemplates)
+    n label,clusterNum
+    s label="",clusterNum=0
+    w !,"digraph{"
+    f  s label=$o(@graphTemplates@(label)) q:label=""  d
+    . w !,"  subgraph "_"cluster_"_clusterNum_" {"
+    . w !,"   label="""_label_":"";"
+    . d emitNodesAndArrowsDot($na(@graphTemplates@(label)),label)
+    . w !,"  }"
+    . s clusterNum=clusterNum+1
+    w !,"}"
+    q
+    ;
+    ; The core driver for the .dot file text creation.
+    ; Parameters:
+    ;   aGraph - A string pointer to a graph
+    ;   prelabel - optional text label to prepend to nodes and arrows
+    ;   listOfArrowsToEmphasize - Dotted array with arrows to emphasize
+emitNodesAndArrowsDot(aGraph,prelabel,arrowsToEmphasize)
+    n aNode,anArrow,nodeLabel
+    w !,"   /* Entities */"
+    s aNode="",anArrow="",prelabel=$g(prelabel)
+    f  s aNode=$o(@aGraph@("nodes",aNode)) q:aNode=""  d
+    . s nodeLabel=$$nodeData(aGraph,aNode)
+    . i $$nodeDataType(aGraph,aNode)="string" s nodeLabel="'"_nodeLabel_"'"
+    . w !,"     "_prelabel_aNode_" [label="""_nodeLabel_"""];"
+    w !,"   /* Relationships */"
+    f  s anArrow=$o(@aGraph@("arrows",anArrow)) q:anArrow=""  d
+    . w !,"     "_prelabel_$$sourceNode(aGraph,anArrow)_" -> "_prelabel_$$targetNode(aGraph,anArrow)
+    . i $d(arrowsToEmphasize(anArrow)) d
+    . . w "[color=red"
+    . . w:arrowsToEmphasize(anArrow)'="" ",label="""_arrowsToEmphasize(anArrow)_""""
+    . . w "]"
+    . w ";"
+    q
+    ;
+    ;
+    ; TODO: Write some functions to nicely display paths.  This should include info about the paths as well.
+    ;
     ; ====================================================================================
     ; ================================== TEST HARNESSES ==================================
-    ;
-    ; TODO: Write test cases to make sure that surgically adding subgraphs also updates the start and end node if necessary
     ;
 tester()
     d testAB()
@@ -750,18 +809,20 @@ testAB()
     n myIndexedGraphTemplates,myGraph,replacementNode,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
     ;
     ; Test graph building
+    w !,!,"==============================="
     w !,"Building syntax template for an AB map..."
     w $s($$buildSyntaxMapForAB("myIndexedGraphTemplates"):"Success!",1:"Failure!")
-    w ! zw myIndexedGraphTemplates
+    d emitGraphTemplatesDot("myIndexedGraphTemplates")
     ;
     ; Test surgical graph additions
     m myGraph=myIndexedGraphTemplates("AB") ; Make a local copy of the graph
     w !,"A graph built from the syntax template for AB:"
-    w ! zw myGraph
+    d emitGraphDot("myGraph")
+    ;
     w !,"Surgically modifying this graph..."
     s replacementNode=$$surgicallyAddSugbraph("myGraph",3,"myIndexedGraphTemplates") ; merge in another copy of the AB graph for the AB node
     w $s(replacementNode]"":"Success!",1:"Failure!")
-    w ! zw myGraph
+    d emitGraphDot("myGraph")
     ;
     ; Test path parsing
     s stringToParse="AAABBB"
@@ -774,9 +835,10 @@ testABB()
     n myIndexedGraphTemplates,myGraph,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
     ;
     ; Test graph building
+    w !,!,"==============================="
     w !,"Building syntax template for an ABB map..."
     w $s($$buildSyntaxMapForABB("myIndexedGraphTemplates"):"Success!",1:"Failure!")
-    w ! zw myIndexedGraphTemplates
+    d emitGraphTemplatesDot("myIndexedGraphTemplates")
     ;
     m myGraph=myIndexedGraphTemplates("ABB") ; Make a local copy of the graph
     ;
@@ -807,9 +869,10 @@ testAAABB()
     n myIndexedGraphTemplates,myGraph,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
     ;
     ; Test graph building
+    w !,!,"==============================="
     w !,"Building syntax template for an AAABB map..."
     w $s($$buildSyntaxMapForAAABB("myIndexedGraphTemplates"):"Success!",1:"Failure!")
-    w ! zw myIndexedGraphTemplates
+    d emitGraphTemplatesDot("myIndexedGraphTemplates")
     ;
     m myGraph=myIndexedGraphTemplates("AAABB") ; Make a local copy of the graph
     ;
@@ -844,11 +907,12 @@ testABABA()
     n myIndexedGraphTemplates,myGraph,replacementNode,longestPath,stringToParse,longestPathLength,longestPathNodes,SUCCESS
     ;
     ; Test graph building
+    w !,!,"==============================="
     w !,"Building syntax template for an ABABA map..."
     w $s($$buildSyntaxMapForABABA("myIndexedGraphTemplates"):"Success!",1:"Failure!")
-    w ! zw myIndexedGraphTemplates
+    d emitGraphTemplatesDot("myIndexedGraphTemplates")
     ;
-     m myGraph=myIndexedGraphTemplates("ABABA") ; Make a local copy of the graph
+    m myGraph=myIndexedGraphTemplates("ABABA") ; Make a local copy of the graph
     ;
     ; Test path parsing
     s stringToParse="ABA" ; the shortest possible string in this grammar
@@ -874,7 +938,7 @@ tryParseAndReport(stringToParse,aGraph,graphTemplates)
     s longestPathLength=$$pathStringLength("longestPath",aGraph)
     w !,"The best parse "_$s(SUCCESS:"parsed",1:"failed at")_" "_+longestPathLength_" characters."
     w ! zw longestPath
-    w ! zw @aGraph
+    d emitGraphDot(aGraph,.longestPath)
     q
     ;
     ;
@@ -954,19 +1018,19 @@ buildSyntaxMapForABB(graphTemplates)
     ;
     ; Builds the following graph templates:
     ;  AAABB:
-    ;    START ---- END
+    ;    BEGIN ---- CONCLUDE
     ;            
     ;              ---- "" ----
     ;  START:    /              \ 
     ;    "A" ---<                >-- ""
     ;            \              / 
-    ;              --- START -- 
+    ;              --- BEGIN -- 
     ;
-    ;             --- "" ---
-    ;  END:     /            \
-    ;    "B" --<              >-- ""
-    ;           \            /
-    ;             --- END --
+    ;                  ----- "" -----
+    ;  CONCLUDE:     /                \
+    ;         "B" --<                  >-- ""
+    ;                \                /
+    ;                  --- CONCLUDE --
     ; This builds strings like "AAAA" or "AABBBB"
 buildSyntaxMapForAAABB(graphTemplates)
     n aTemplate,dataStack,aNode,templateName
@@ -975,18 +1039,18 @@ buildSyntaxMapForAAABB(graphTemplates)
     s templateName="AAABB"
     s aTemplate=$na(@graphTemplates@(templateName))
     ;
-    s dataStack(1)="START"
+    s dataStack(1)="BEGIN"
     s aNode(1)=$$addNode(aTemplate,"subgraph",.dataStack)
     s %=$$setStartNode(aTemplate,aNode(1))
     ;
-    s dataStack(1)="END"
+    s dataStack(1)="CONCLUDE"
     s aNode(2)=$$addNode(aTemplate,"subgraph",.dataStack)
     s %=$$setEndNode(aTemplate,aNode(2))
     ;
     s %=$$addArrow(aTemplate,aNode(1),aNode(2))
     ;
-    ; Build START graph template
-    s templateName="START"
+    ; Build BEGIN graph template
+    s templateName="BEGIN"
     s aTemplate=$na(@graphTemplates@(templateName))
     ;
     k aNode
@@ -997,7 +1061,7 @@ buildSyntaxMapForAAABB(graphTemplates)
     s dataStack(1)=""
     s aNode(2)=$$addNode(aTemplate,"string",.dataStack)
     ;
-    s dataStack(1)="START"
+    s dataStack(1)="BEGIN"
     s aNode(3)=$$addNode(aTemplate,"subgraph",.dataStack)
     ;
     s dataStack(1)=""
@@ -1009,8 +1073,8 @@ buildSyntaxMapForAAABB(graphTemplates)
     s %=$$addArrow(aTemplate,aNode(2),aNode(4))
     s %=$$addArrow(aTemplate,aNode(3),aNode(4))
     ;
-    ; Build END grapn template
-    s templateName="END"
+    ; Build CONCLUDE grapn template
+    s templateName="CONCLUDE"
     s aTemplate=$na(@graphTemplates@(templateName))
     ;
     k aNode
@@ -1021,7 +1085,7 @@ buildSyntaxMapForAAABB(graphTemplates)
     s dataStack(1)=""
     s aNode(2)=$$addNode(aTemplate,"string",.dataStack)
     ;
-    s dataStack(1)="END"
+    s dataStack(1)="CONCLUDE"
     s aNode(3)=$$addNode(aTemplate,"subgraph",.dataStack)
     ;
     s dataStack(1)=""
@@ -1037,7 +1101,7 @@ buildSyntaxMapForAAABB(graphTemplates)
     ;
     ;
     ; Builds the following graph templates:
-    ;            ------
+    ;            -----
     ;           /      \
     ;  ABABA:  |        |
     ;           \      /
