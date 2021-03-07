@@ -52,10 +52,8 @@ PARSER5
     ; This will be used to 'move our read pointer' along the input string.
     ;
     ; Define a "parse path" to be an ordered list of tuples, each of which contains the following:
-    ;    1) A node from an ordered path graph
-    ;    2) An outgoing arrow from that node
-    ;    3) a parse position describing how far we've read along the input string to get to this point
-    ; Moreover, we require that the arrow for each tuple points to the node from the next tuple.
+    ;    1) An arrow whose source node is the same as the target node of the previous arrow in the parse path
+    ;    2) a parse position describing how far we've read along the input string to get to this point
     ; This allows us to describe a chain of nodes and arrows from a directed graph.
     ;
     ;
@@ -88,6 +86,7 @@ PARSER5
     ; path(1,"arrow") = the ID for anArrow
     ; path(1,"parsePosition") = the parsePosition in the input string that got us to the source node of the arrow
     ; path(2,"arrow") = the ID for anotherArrow.  Note that the source of anotherArrow must be the target of anArrow.
+    ; path(2,"parsePosition") = the parsePosition in the input string that got us to the source node of the arrow
     ;
     ; subgraphTemplates("subgraph name") = a graph (including the "nodes", "arrows", and "index")
     ; 
@@ -117,15 +116,16 @@ PARSER5
     ; aNode with a copy of subGraphTemplate.  Also, the list of what's
     ; been replaced has been kept in the list of node types in the graph.
     ;
-    ; Given a path, we can append a new node (and arrow) to it using this function:
-    ;    AppendToPath(aGraph,aPath,aNode,parsePositionIncrement)
-    ;        Let lastNode be the last node in aPath
-    ;        Let lastArrow be the last arrow in aPath
+    ; Given a path, we can append a new arrow to it in the obvious way by using 
+    ; this function:
+    ;    AppendToPath(aGraph,aPath,anArrow,parsePositionIncrement)
+    ;        Let lastArrow be the arrow in the last tuple of aPath
+    ;        Let lastNode be the target node of lastArrow
     ;        If lastArrow doesn't point to aNode in aGraph, throw an error
-    ;        get parsePosition from lastNode
+    ;        get parsePosition from the last tuple in aPath
     ;        Let newParsePosition = parsePosition + parsePositionIncrement
     ;        let firstOutArrow be the "first" outgoing arrow from aNode in aGraph
-    ;        create a tuple containing aNode, firstOutArrow, and newParsePosition
+    ;        create a tuple containing firstOutArrow and newParsePosition
     ;        Append this tuple to aPath (which is a list of such tuples)
     ;        retun aPath
     ; 
@@ -687,51 +687,66 @@ pathStringLength(aPath,aGraph,nodeCount)
     ; and by appending and backtracking the path.
     ; It returns 1 if it found a path through the grammar that consumed the entire inputText.
     ; If it couldn't find a path through the grammar graph that used up all of the inputText,
-    ; then it will return a 0.
+    ; then it will return a -1.
     ;
     ; To get the actual longest path, you need to pass in a dotted longestPath parameter.
     ; Recall that the longestPath is made up of arrows.  So if the Traverse operation did
     ; not return a success, it means that the last arrow of the longestPath points at an
     ; end node that did not parse correctly.
-Traverse(aGraph,indexedGraphTemplates,inputText,longestPath)
-    n pathLength,parsePosition,lastNode,STOP,SUCCESS,nodeDataType,thisPath,thisPathStringLength,longestPathStringLength,newNode,expectedString
-    k longestPath
-    s STOP=0,SUCCESS=0
-    f  d  q:STOP  ; Traverse the ordered grammar graph to find the first path through it.
-    . s pathLength=$$endOfPath("thisPath",aGraph,.lastNode,.parsePosition) ; Get the last node in the path and the parse position corresponding to that node
-    . i pathLength=0 d  ; Handle the case where the path is empty.
-    . . s lastNode=$$startNode(aGraph) ; the path may be empty, so we need to start at the beginning of the graph
-    . . s %=$$initializeParsePosition(.parsePosition) ; If the path is empty, we also need an initial parse position
-    . ; Store the original node label in the node data stack.  Assuming we never recycle node numbers, this tracks the "lineage" of nodes.
-    . i $$getNodeExtraData(aGraph,lastNode,"node ID")="",$$setNodeExtraData(aGraph,lastNode,"node ID",lastNode) ; Note that this data is only stored on nodes we try in our path
-    . ; Specific logic based on whether the node holds a string, or a pointer to a sub-graph template
-    . s nodeDataType=$$nodeDataType(aGraph,lastNode)
-    . i nodeDataType="subgraph" d  q  ; If lastNode is a subgraph pointer, we need to surgically paste a copy of that subgraph into our graph
-    . . s newNode=$$surgicallyAddSugbraph(aGraph,lastNode,indexedGraphTemplates) ; dynamically build the ordered syntax graph as needed
-    . . i pathLength=0 q  ; If our path was empty, we don't need to tinker with the (non-existant) last arrow in the path
-    . . s pathLength=$$removeLastArrowFromPath("thisPath") ; get rid of the arrow that pointed at lastNode
-    . . i pathLength=0 q  ; If we've manipulated the first node of the syntax graph, we'll restart our parse with an empty path
-    . . s %=$$appendNodeToPath("thisPath",aGraph,newNode,parsePosition) ; notice that in the next iteration of the loop, newNode will end up as lastNode
-    . i nodeDataType="string" d  q
-    . . s expectedString=$$nodeData(aGraph,lastNode) ; Get information from the graph that we're trying to parse against.
-    . . ; If the next characters in the input text don't match the data from lastNode, we try backtrack to an unused branch, and stop the parse if we can't.
-    . . i $$readFromParsePosition(.parsePosition,expectedString,inputText)<0 s:$$backtrackPathToLastBranch("thisPath",aGraph)<1 STOP=1 q
-    . . ; If we get here, then the next characters match the last node in the path, so we add the next node to the parse path
-    . . i lastNode'=$$endNode(aGraph) s %=$$appendArrowToPath("thisPath",aGraph,$$firstOutgoingArrow(aGraph,lastNode),parsePosition)
-    . . s thisPathStringLength=$$pathStringLength("thisPath",aGraph)
-    . . i thisPathStringLength>$g(longestPathStringLength) d  ; Check if we've found a path that parses more of the input text
-    . . . k longestPath
-    . . . m longestPath=thisPath
-    . . . s longestPathStringLength=thisPathStringLength
-    . . i lastNode=$$endNode(aGraph) d  ; We've hit the end of the syntax graph, so we need to do some special checking
-    . . . i $$parsePositionIsEnd(parsePosition,inputText) d  q  ; We've also run out of characters to parse, so we're done
-    . . . . s STOP=1,SUCCESS=1
-    . . . . k longestPath
-    . . . . m longestPath=thisPath
-    . . . s:$$backtrackPathToLastBranch("thisPath",aGraph)<1 STOP=1 ; We've run out of input text but we haven't hit the end of the graph, so we try to backtrack.
-    . s $EC=",Uunknown node data type '"_nodeDataType_"'," ; This should never happen!
-    q SUCCESS
+Traverse(aGraph,indexedGraphTemplates,inputText,bestPath)
+    n STOP,thisPath,bestPathStringLength
+    k bestPath
+    s STOP=0
+    f  s STOP=$$TraverseOne(aGraph,indexedGraphTemplates,inputText,"thisPath",.bestPath,.bestPathStringLength)  q:STOP 
+    q STOP
     ;
+    ;
+    ; A helper function that does the actual work of traversing the graph.
+    ; This looks at the last node in aPath, and either parses input text or surgically modifies the graph.
+    ; Returns 1 if the parse of the last node in @aPath completed the parse of inputText
+    ; Returns 0 if the graph had to be surgically modified, or if backtracking was requiried
+    ; Returns -1 if we can't parse or backtrack.
+    ; The bestPath parameter should be passed in as a dotted parameter.
+    ; The optional bestPastStringLength can also be passed in as a dotted parameter for extra performance.
+TraverseOne(aGraph,indexedGraphTemplates,inputText,aPath,bestPath,bestPathStringLength)
+    n RESULT,pathLength,parsePosition,lastNode,nodeDataType,thisPathStringLength,newNode,expectedString
+    s RESULT=0
+    s pathLength=$$endOfPath(aPath,aGraph,.lastNode,.parsePosition) ; Get the last node in the path and the parse position corresponding to that node
+    i pathLength=0 d  ; Handle the case where the path is empty.
+    . s lastNode=$$startNode(aGraph) ; the path may be empty, so we need to start at the beginning of the graph
+    . s %=$$initializeParsePosition(.parsePosition) ; If the path is empty, we also need an initial parse position
+    ; Store the original node label in the node data stack.  Assuming we never recycle node numbers, this tracks the "lineage" of nodes.
+    i $$getNodeExtraData(aGraph,lastNode,"node ID")="",$$setNodeExtraData(aGraph,lastNode,"node ID",lastNode) ; Note that this data is only stored on nodes we try in our path
+    ; Specific logic based on whether the node holds a string, or a pointer to a sub-graph template
+    s nodeDataType=$$nodeDataType(aGraph,lastNode)
+    i nodeDataType="subgraph" d  q RESULT  ; If lastNode is a subgraph pointer, we need to surgically paste a copy of that subgraph into our graph
+    . s newNode=$$surgicallyAddSugbraph(aGraph,lastNode,indexedGraphTemplates) ; dynamically build the ordered syntax graph as needed
+    . i pathLength=0 q  ; If our path was empty, we don't need to tinker with the (non-existant) last arrow in the path
+    . s pathLength=$$removeLastArrowFromPath(aPath) ; get rid of the arrow that pointed at lastNode
+    . i pathLength=0 q  ; If we've manipulated the first node of the syntax graph, we'll restart our parse with an empty path
+    . s %=$$appendNodeToPath(aPath,aGraph,newNode,parsePosition) ; notice that in the next iteration of the loop, newNode will end up as lastNode
+    i nodeDataType="string" d  q RESULT
+    . s expectedString=$$nodeData(aGraph,lastNode) ; Get information from the node that we're trying to parse against.
+    . ; If the next characters in the input text don't match the data from lastNode, we try backtrack to an unused branch, and stop the parse if we can't.
+    . i $$readFromParsePosition(.parsePosition,expectedString,inputText)<0 s:$$backtrackPathToLastBranch(aPath,aGraph)<1 RESULT=-1 q
+    . ; If we get here, then the next characters match the last node in the path
+    . i lastNode=$$endNode(aGraph) d  q  ; We've hit the end of the syntax graph, so we need to do some special checking
+    . . ; Check if we've hit the end of the graph with input text remaining 
+    . . i '$$parsePositionIsEnd(parsePosition,inputText) s:$$backtrackPathToLastBranch(aPath,aGraph)<1 RESULT=-1 q  ; Backtrack if there's more text to parse
+    . . ; We're at the end of the graph and we've run out of characters to parse, so we're done!
+    . . s RESULT=1
+    . . k bestPath
+    . . m bestPath=@aPath ; This is a successful parse!
+    . ; If we get this far, we're successfully parsing, but we're not yet at the end node of the graph, so we need to keep parsing
+    . s thisPathStringLength=$$pathStringLength(aPath,aGraph) ; Track the best path so far, so we can return *something* to the caller
+    . i '$d(bestPathStringLength) s bestPathStringLength=$$pathStringLength("bestPath",aGraph)
+    . i thisPathStringLength>$g(bestPathStringLength) d  ; Check if we've found a path that parses more of the input text
+    . . k bestPath
+    . . m bestPath=@aPath ; This is actually the "least worst" path we've found so far
+    . . s bestPathStringLength=thisPathStringLength
+    . s %=$$appendArrowToPath(aPath,aGraph,$$firstOutgoingArrow(aGraph,lastNode),parsePosition) ; Add on the next outgoing arrow to the parse path
+    s $EC=",Uunknown node data type '"_nodeDataType_"'," ; This should never happen!
+    q -2 ; Getting to here is actually impossible, since we'd throw an error first
     ;
     ; =====  Display Functions ======
     ; These are functions that are useful outside of the core functionality of a parser.
@@ -931,7 +946,7 @@ tryParseAndReport(stringToParse,aGraph,graphTemplates)
     n longestPath,SUCCESS,longestPathLength,longestPathNodes
     w !,"Using the graph to parse the string '"_stringToParse_"'."
     s SUCCESS=$$Traverse(aGraph,graphTemplates,stringToParse,.longestPath)
-    w !,"Graph traverse ",$s(SUCCESS:"succeeded.",1:"failed.")
+    w !,"Graph traverse ",$s(SUCCESS>0:"succeeded.",1:"failed.")
     w !,"The longest path generates this string: '",$$pathString("longestPath",aGraph),"'"
     w !,"The longest path contains "_$$pathNodes("longestPath",aGraph,.longestPathNodes)_" node(s):"
     w ! zw longestPathNodes

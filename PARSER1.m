@@ -1,3 +1,4 @@
+ROUTINE PARSER1
 PARSER1
     ; Copyright (C) 2013-2020 Neils Schoenfelder
     ; 
@@ -20,7 +21,7 @@ PARSER1
     ;
     ;
     ; =====  OVERVIEW  ====
-    ; This is a parser for any language that  can be expressed using a syntax diagram consisting only of:
+    ; This is a parser for any language that can be expressed using a syntax diagram consisting only of:
     ;   1) string literals
     ;   2) collections of finitely many options
     ;   3) delimited lists
@@ -112,13 +113,13 @@ PARSER1
     ; ====  EXAMPLES  ====
     ; For example, say a token is made up of a literal string 'foo(', followed by a FEEP token, followed by a literal string ')bar'.
     ; We could define this as follows:
-    ;       @map@(tokenName)="subtreeChain"
-    ;       @map@(tokenName,1)="literal"
-    ;       @map@(tokenName,1,"value")="foo("
-    ;       @map@(tokenName,2)="token"
-    ;       @map@(tokenName,2,"value")="FEEP"
-    ;       @map@(tokenName,3)="literal"
-    ;       @map@(tokenName,3,"value")=")bar"
+    ;   @map@(tokenName)="subtreeChain"
+    ;   @map@(tokenName,1)="literal"
+    ;   @map@(tokenName,1,"value")="foo("
+    ;   @map@(tokenName,2)="token"
+    ;   @map@(tokenName,2,"value")="FEEP"
+    ;   @map@(tokenName,3)="literal"
+    ;   @map@(tokenName,3,"value")=")bar"
     ;
     ; Here are some valid examples of maps:
     ;   @map@("token1")="literal"
@@ -236,7 +237,7 @@ PARSER1
     ; The way to avoid left-recursive maps to make sure that every recursive cycle consumes at least one character of the input string.
     ; (This is a simple monotonicity condition.)
     ;
-    ;   
+    ;
     ; *******************************
     ;
     ;
@@ -299,7 +300,7 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     . s tokenName=@subTreePointer@("value")
     . s charsParsed=$$parseToken(tokenName,outParseTreePointer,mapPointer,codePointer,startColumn)
     ;
-    i '$d(charsParsed) s charsParsed="-2,unknown subTreeType: "_subTreeType BREAK  ; TODO:  Get rid of BREAK
+    i '$d(charsParsed) s charsParsed="-2,unknown subTreeType: "_subTreeType BREAK  ; TODO:  Get rid of break
     ;
     q charsParsed
     ;
@@ -328,7 +329,6 @@ parseSubtree(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ; Returns the number of characters parsed or a negative number on an error.
 parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn)
     q:$g(subTreePointer)="" "-1,no subTreePointer."
-    n totalCharsParsed,tempCodePosition,subTreePosition,tempSubtreePointer,tempOutParseTreePointer,charsParsed,outSubTreePosition
     ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
     ; This is because we merge the parse tree pointers between the levels of the stack.
@@ -336,21 +336,19 @@ parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,star
     s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
-    s totalCharsParsed=0
-    s tempCodePosition=startColumn
-    s outSubTreePosition=1
+    n totalCharsParsed,tempCodePosition,subTreePosition,tempSubtreePointer,tempOutParseTreePointer,charsParsed
+    s totalCharsParsed=0,tempCodePosition=startColumn
     ; We parse, keeping a running total of the total characters processed until hitting an error (parsing negative characters) or running out of subtrees in the subtreeChain.
     f subTreePosition=1:1 q:'$d(@subTreePointer@(subTreePosition))  d  q:totalCharsParsed<0
+    . ; Grab the part of the grammer we're working with and provision a temporary location to put the parse tree for this part of the chain
     . s tempSubtreePointer=$name(@subTreePointer@(subTreePosition))
-    . s tempOutParseTreePointer=$name(@tmpOutParseRootPointer@(outSubTreePosition))
+    . s tempOutParseTreePointer=$name(@tmpOutParseRootPointer@(subTreePosition))
     . ;
     . s charsParsed=$$parseSubtree(tempSubtreePointer,tempOutParseTreePointer,mapPointer,codePointer,tempCodePosition)
     . ;
     . i charsParsed<0 s totalCharsParsed=charsParsed q   ; if an error condition was returned, we just pass that back.
-    . i charsParsed=0 q  ; Ignore any chain elements that parses to an empty string.  This doesn't make all chain elements optional, but it does simplify the parse tree
     . s totalCharsParsed=totalCharsParsed+charsParsed
     . s tempCodePosition=tempCodePosition+charsParsed
-    . s outSubTreePosition=1+outSubTreePosition
     ;
     ; If we parsed the chain of grammer elements without error, we'll merge the results into our parse tree and read further in the code stream
     i totalCharsParsed'<0,$g(%parseControlForcing)'["noStore" d
@@ -399,7 +397,6 @@ parseSubtreeChain(subTreePointer,outParseTreePointer,mapPointer,codePointer,star
     ; Returns the number of characters parsed.  This is negative if an error is encountered.
 parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColumn)
     q:$g(subTreePointer)="" "-1,no subTreePointer"
-    n whichOption,tempSubTreePointer,tempOutParseTreePointer,amountParsed,maxParsed,bestOption
     ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
     ; This is because we merge the parse tree pointers between this and deeper levels of the stack.
@@ -407,14 +404,15 @@ parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
+    n whichOption,tempSubTreePointer,tempOutParseTreePointer,amountParsed,maxParsed,bestOption
     f whichOption=1:1 q:'$d(@subTreePointer@(whichOption))  d
     . s tempSubTreePointer=$name(@subTreePointer@(whichOption))
     . s tempOutParseTreePointer=$name(@tmpOutParseRootPointer@(whichOption))
     . ;
     . s amountParsed=$$parseSubtree(tempSubTreePointer,tempOutParseTreePointer,mapPointer,codePointer,startColumn)
     . ;
-    . i amountParsed<+$g(maxParsed) k @tempOutParseTreePointer q  ; We've done at least as well with previous options, so clean up and try another option.
     . i amountParsed<0 k @tempOutParseTreePointer q  ; encountered an error in parsing that tree, so we throw it away.
+    . i $g(bestOption),amountParsed<maxParsed k @tempOutParseTreePointer q  ; We've done better with previous options, so clean up and try another option.
     . ;
     . ; At this point, we know we have a new "best" option
     . s maxParsed=amountParsed
@@ -423,7 +421,7 @@ parseOptions(subTreePointer,outParseTreePointer,mapPointer,codePointer,startColu
     ;
     ; Handle the edge case of an empty list of options.
     i '$g(bestOption) s maxParsed="-3,no error-free parse option found"
-    e  i $g(%parseControlForcing)'["noStore",maxParsed>0 m @outParseTreePointer=@tmpOutParseRootPointer@(bestOption)
+    e  i $g(%parseControlForcing)'["noStore" m @outParseTreePointer=@tmpOutParseRootPointer@(bestOption)
     ;
     q maxParsed
     ;
@@ -477,45 +475,49 @@ parseDelimList(contentSubTreePointer,delimiterSubtreePointer,outParseTreePointer
     q:$g(contentSubTreePointer)="" "-5, missing contentSubTreePointer"
     q:$g(delimiterSubtreePointer)="" "-6, missing delimiterSubtreePointer"
     ;
-    n totalCharsParsed,charsParsed,delimCharsParsed,tempCodePosition,tempListObjectParseTreePointer,tempDelimiterParseTreePointer,listObjNum
-    ;
     ; We need to ensure uniqueness of the parse tree pointer in the entire frame stack.
     ; This is because we merge the parse tree pointers between the levels of the stack.
     n tmpOutParseRootPointer
     s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
-    s totalCharsParsed=0,charsParsed=0,delimCharsParsed=0
-    s tempCodePosition=startColumn
-    s tempListObjectParseTreePointer=$name(@tmpOutParseRootPointer@("content"))
-    s tempDelimiterParseTreePointer=$name(@tmpOutParseRootPointer@("delimiter"))
+    n charsParsed,contentCharsParsed,delimCharsParsed,tempStartCol,contentParseTreePointer,delimiterParseTreePointer,listObjNum
+    s charsParsed=0,contentCharsParsed=0,delimCharsParsed=0,tempStartCol=startColumn
+    s contentParseTreePointer=$name(@tmpOutParseRootPointer@("content"))
+    s delimiterParseTreePointer=$name(@tmpOutParseRootPointer@("delimiter"))
     ;
-    f listObjNum=1:1 d  q:charsParsed<0  q:delimCharsParsed<0
-    . s charsParsed=$$parseSubtree(contentSubTreePointer,tempListObjectParseTreePointer,mapPointer,codePointer,tempCodePosition)
+    f listObjNum=1:1 d  q:contentCharsParsed<0  q:delimCharsParsed<0  q:contentCharsParsed+delimCharsParsed=0
+    . ; Parse some delimited content
+    . k @contentParseTreePointer
+    . s contentCharsParsed=$$parseSubtree(contentSubTreePointer,contentParseTreePointer,mapPointer,codePointer,tempStartCol)
     . ;
-    . ; If this content subtree couldn't be parsed, we need to quit.
-    . ; If the content followed a non-empty delimiter, then a parse error in content also invalidates the parse of the last delimiter
-    . ; If no delimiter has been read yet, then this must be the first content subtree, in which case a parse error is a parse error in the entire delimited list.
-    . i charsParsed<0 s:'$d(@tempDelimiterParseTreePointer) totalCharsParsed=charsParsed q
+    . ; If this content subtree couldn't be parsed, we need to quit.  
+    . ; Also, if the error is in the first content subtree, the whole delimList is invalid, so pass the error value back
+    . i contentCharsParsed<0 s:listObjNum=1 charsParsed=contentCharsParsed q
     . ;
-    . ; Update the character count and merge in the parsed delimiter and character data
-    . s totalCharsParsed=totalCharsParsed+charsParsed+delimCharsParsed
-    . i $g(%parseControlForcing)'["noStore" d
-    . . m:charsParsed>0 @outParseTreePointer@("contents",listObjNum)=@tempListObjectParseTreePointer
-    . . m:delimCharsParsed>0 @outParseTreePointer@("delimiters",listObjNum-1)=@tempDelimiterParseTreePointer
-    . . ;m:$d(@tempListObjectParseTreePointer) @outParseTreePointer@("contents",listObjNum)=@tempListObjectParseTreePointer
-    . . ;m:$d(@tempDelimiterParseTreePointer) @outParseTreePointer@("delimiters",listObjNum-1)=@tempDelimiterParseTreePointer
-    . k @tempListObjectParseTreePointer,@tempDelimiterParseTreePointer
+    . ; Successful parsing means we need to move our read pointer
+    . s tempStartCol=tempStartCol+contentCharsParsed
     . ;
-    . ; Now read ahead to the next delimiter
-    . s tempCodePosition=tempCodePosition+charsParsed ; Advance the position in code to the start of our hypothetical delimiter.
-    . s delimCharsParsed=$$parseSubtree(delimiterSubtreePointer,tempDelimiterParseTreePointer,mapPointer,codePointer,tempCodePosition)
-    . s tempCodePosition=tempCodePosition+delimCharsParsed
+    . ; Successfully parsing content validates the delimiter that preceeded it
+    . i listObjNum>1 d
+    . . s charsParsed=charsParsed+delimCharsParsed
+    . . i $g(%parseControlForcing)'["noStore" m @outParseTreePointer@("delimiters",listObjNum-1)=@delimiterParseTreePointer
     . ;
-    . i delimCharsParsed<0 q  ; If a delimiter doesn't follow the last content, we've found the end of the list.
-    . i delimCharsParsed=0,charsParsed=0 q  ; If both the delimiter and the content parsed to 0 characters, we quit to avoid an infinite loop
+    . ; We also need to store the parse of the content we've successfully parsed
+    . s charsParsed=charsParsed+contentCharsParsed
+    . i $g(%parseControlForcing)'["noStore" m @outParseTreePointer@("contents",listObjNum)=@contentParseTreePointer
+    . ;
+    . ; Try to parse the next delimiter.  We're tolerant of errors here, since there might not be a next delimiter
+    . k @delimiterParseTreePointer
+    . s delimCharsParsed=$$parseSubtree(delimiterSubtreePointer,delimiterParseTreePointer,mapPointer,codePointer,tempStartCol)
+    . ;
+    . ; If a delimiter doesn't follow the last content, we've found the end of the list.
+    . i delimCharsParsed<0 q  
+    . ;
+    . ; Successful parsing means we need to move our read pointer
+    . s tempStartCol=tempStartCol+delimCharsParsed
     ;
-    q totalCharsParsed
+    q charsParsed
     ;
     ;
     ; This function parses an arbitrary token.
@@ -533,12 +535,11 @@ parseToken(token,outParseTreePointer,mapPointer,codePointer,startColumn)
     q:$g(token)="" "-7, no token specified for parsing."
     q:$g(mapPointer)="" "-8, no map pointer specified.  Can't resolve token definition."
     ;
-    n charsParsed,subTreePointer
-    ;
     n tmpOutParseRootPointer
     s tmpOutParseRootPointer="tmpPrs"_$stack
     n @tmpOutParseRootPointer
     ;
+    n subTreePointer,charsParsed
     s subTreePointer=$name(@mapPointer@(token))
     s charsParsed=$$parseSubtree(subTreePointer,tmpOutParseRootPointer,mapPointer,codePointer,startColumn)
     ;
@@ -553,7 +554,7 @@ parseToken(token,outParseTreePointer,mapPointer,codePointer,startColumn)
     ; This function parses the code to check for a specific string literal.
     ; This literal can be multiple characters long, and can include unprintable characters
     ; The parameters are as follows:
-    ;   literalValue - The name of the token we're trying to parse the code as.
+    ;   literalValue - The value we're trying to parse the code as.
     ;   parseControlForce - a string that represents any special parsing controls to apply to parsing this literal
     ;   outParseTreePointer - a string pointer to the array in which the parse data will be held.
     ;                 If the literal value can be successfully parsed, it will be stored at @outParseTreePointer
@@ -565,7 +566,7 @@ parseLiteral(literalValue,outParseTreePointer,mapPointer,codePointer,startColumn
     q:$g(outParseTreePointer)="" "-1,no outParseTreePointer specified."
     q:$g(literalValue)="" "-9,an empty literal value is left-recursive and forces an infinite loop."
     ;
-    n literalLength,charsParsed,codeFragment
+    n literalLength,codeFragment,charsParsed
     s literalLength=$l(literalValue)
     s codeFragment=$$readCodeStream(codePointer,startColumn,literalLength)
     ;
@@ -575,7 +576,7 @@ parseLiteral(literalValue,outParseTreePointer,mapPointer,codePointer,startColumn
     ;
     ; If the literalValue matches the next chunk of code, we'll return the length of the code parsed.  Otherwise, it's an error.
     i literalValue=codeFragment s charsParsed=literalLength
-    e  s charsParsed="-10,literal value doesn't match next code fragments"
+    e  s charsParsed="-10,literal value doesn't match next code fragments" ;BREAK ; TODO: Remove BREAK
     ;
     i charsParsed>0,$g(%parseControlForcing)'["noStore" s @outParseTreePointer=literalValue
     ;
@@ -589,7 +590,7 @@ parseLiteral(literalValue,outParseTreePointer,mapPointer,codePointer,startColumn
     ;   readLength - the number of characters to read in from @codePointer, starting at startColumn.
 readCodeStream(codePointer,startColumn,readLength) q:$g(codePointer)="" "-1,codePointer required for parsing"
     s:+$g(startColumn)<1 startColumn=1
-    i startColumn+readLength-1>$l(@codePointer) q "-10,overread error on code"
+    i startColumn+readLength-1>$l(@codePointer) q "-11,overread error on code"
     ;
     ; TODO:  This only works on code input of a single line, which sucks.  Make this READ from a file stream or handle multiline data.
     ;
@@ -705,6 +706,47 @@ buildTestGrammer(map) q:$g(map)=""
     s @map@("number",2,2,2,"content")="token" 
     s @map@("number",2,2,2,"content","value")="digit"
     ;
+    s @map@("variable")="subtreeChain" ; either "var" or "var(484.088000)"
+    s @map@("variable",1)="literal"
+    s @map@("variable",1,"value")="var"
+    s @map@("variable",2)="options"
+    s @map@("variable",2,1)=""
+    s @map@("variable",2,2)="subtreeChain"
+    s @map@("variable",2,2,1)="literal"
+    s @map@("variable",2,2,1,"value")="("
+    s @map@("variable",2,2,2)="options"
+    s @map@("variable",2,2,2,1)="token"  
+    s @map@("variable",2,2,2,1,"value")="expression" ;"expression atom" ;"number" ; 
+    s @map@("variable",2,2,2,2)=""
+    s @map@("variable",2,2,3)="literal"
+    s @map@("variable",2,2,3,"value")=")"
+    ;
+    s @map@("function")="subtreeChain"
+    s @map@("function",1)="literal"
+    s @map@("function",1,"value")="func("
+    s @map@("function",2)="delimList"
+    s @map@("function",2,"delimiter")="literal"
+    s @map@("function",2,"delimiter","value")=","
+    s @map@("function",2,"content")="token"
+    s @map@("function",2,"content","value")="expression"
+    s @map@("function",3)="literal"
+    s @map@("function",3,"value")=")"
+    ;
+    s @map@("expression atom")="options"
+    s @map@("expression atom",1)="subtreeChain"
+    s @map@("expression atom",1,1)="literal"
+    s @map@("expression atom",1,1,"value")="("
+    s @map@("expression atom",1,2)="token"
+    s @map@("expression atom",1,2,"value")="expression"
+    s @map@("expression atom",1,3)="literal"
+    s @map@("expression atom",1,3,"value")=")"
+    s @map@("expression atom",2)="token"
+    s @map@("expression atom",2,"value")="number"
+    s @map@("expression atom",3)="token"
+    s @map@("expression atom",3,"value")="variable"
+    s @map@("expression atom",4)="token"
+    s @map@("expression atom",4,"value")="function"
+    ;
     ; Set up a token map for numbers and products of numbers.
     ; Here, we test the handling of complex delimiters and contents in delimLists.
     ; A number or product/quotient of numbers.
@@ -715,35 +757,26 @@ buildTestGrammer(map) q:$g(map)=""
     s @map@("product","delimiter",2)="literal"
     s @map@("product","delimiter",2,"value")="/"
     s @map@("product","content")="token"
-    s @map@("product","content","value")="number"
+    s @map@("product","content","value")="expression atom"
     ;
     ; Set up a token map for simple addition and parenthesis.
     ; Here's where we get to test our handling of recursion.
     ; A generic expression of digit addition
-    s @map@("numeric expression")="options"
-    s @map@("numeric expression",1)="token"  ; The first option for an expression is any number or product/quotient of numbers
-    s @map@("numeric expression",1,"value")="product"
-    s @map@("numeric expression",2)="subtreeChain" ; This will define "product + numeric expression".
-    s @map@("numeric expression",2,1)="token"
-    s @map@("numeric expression",2,1,"value")="product"
-    s @map@("numeric expression",2,2)="literal"
-    s @map@("numeric expression",2,2,"value")="+"
-    s @map@("numeric expression",2,3)="token"
-    s @map@("numeric expression",2,3,"value")="numeric expression"
-    s @map@("numeric expression",3)="subtreeChain" ; This will define "(expr)".
-    s @map@("numeric expression",3,1)="literal"
-    s @map@("numeric expression",3,1,"value")="("
-    s @map@("numeric expression",3,2)="token"
-    s @map@("numeric expression",3,2,"value")="numeric expression"
-    s @map@("numeric expression",3,3)="literal"
-    s @map@("numeric expression",3,3,"value")=")"
+    s @map@("expression")="delimList"
+    s @map@("expression","content")="token"
+    s @map@("expression","content","value")="product"
+    s @map@("expression","delimiter")="options" ; we can have either + or - as a delimiter in a product/quotient
+    s @map@("expression","delimiter",1)="literal"
+    s @map@("expression","delimiter",1,"value")="+"
+    s @map@("expression","delimiter",2)="literal"
+    s @map@("expression","delimiter",2,"value")="-"
     ;
     q
     ;
     ;
     ; This is a simple test-harness for the main parser tag.
-tester(out,map) n code,counter,$ET,charsParsed
-    s $ET="Write:(0=$STACK) "" Error '""_$zstatus_""' occurred at: ""_$st($st,""place"")"
+tester(out,map) n code,counter,charsParsed,STOP,rootToken
+    ;n $ET s $ET="Write:(0=$STACK) "" Error '""_$zstatus_""' occurred at: ""_$st($st,""place"")"
     ;
     i $g(map)="" s map="tempData" n @map 
     i $g(out)="" s out="tempOutData" n @out
@@ -752,18 +785,29 @@ tester(out,map) n code,counter,$ET,charsParsed
     d buildTestGrammer(map)
     ;
     ; Set up some numeric expressions to parse
-    s code(1)="1",code(2)="2.04",code(3)="0.3",code(4)="200.0004",code(5)="1+1",code(6)="1.3+5",code(7)="(3+1)",code(8)="(4)+12.1",code(9)="1+(2+(3+4.3))+2.1",code(10)="0.2+3.8+(0.0)"
+    s code(1)="1",code(2)="2.04",code(3)="0.3",code(4)="200.0004"
+    s code(5)="1+1",code(6)="1.3+5",code(7)="(3+1)"
+    s code(8)="(4)+12.1",code(9)="1+(2+(3+4.3))+2.1",code(10)="0.2+3.8+(0.0)"
+    s code(11)="var",code(12)="var(234.0)"
+    s code(13)="var()",code(14)="var(var())",code(15)="var(4+var()*5)"
+    s code(16)="func(1,1)",code(17)="func(4,var+3)"
     ;
     ; Now we parse something
+    s rootToken="expression" ;"variable" ;"function" ; 
     s counter=""
-    f  s counter=$o(code(counter)) q:counter=""  d
+    f  s counter=$o(code(counter)) q:counter=""  d  q:$g(STOP)
+    . k @out
     . w !,!,"Testing parse of "_code(counter)_"...  "
-    . s charsParsed=$$parseToken("numeric expression",out,map,"code("_counter_")",1)
+    . s charsParsed=$$parseToken(rootToken,out,map,"code("_counter_")",1)
     . w !,"Return value of parse for '"_code(counter)_"' = "_charsParsed
     . w !,"Parsed string: '"_$e(code(counter),1,charsParsed)_"'"
     . ;
     . w !,"Parse tree:",!
     . d showParseTree(out)
-    . k @out
+    . ;
+    . ; Check for an unsuccessful parse
+    . i charsParsed=$l(code(counter)) q
+    . w !,"FAILURE!"
+    . s STOP=1
     ;
     q
