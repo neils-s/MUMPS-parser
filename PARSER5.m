@@ -21,7 +21,7 @@ PARSER5
     ;
     ;
     ; ==== OVERVIEW =====
-    ; This is a parsser for any languaged that can expressed as a railroad track syntax diagram.
+    ; This is a parser for any languaged that can expressed as a railroad track syntax diagram.
     ;
     ;
     ; ===== TECHNICAL TERMINOLOGY ====
@@ -307,13 +307,23 @@ nodeDataType(aGraph,aNode)
     q @aGraph@("nodes",aNode)
     ;
     ;
+    ; Returns a string pointer to cached data in a node.
+    ; Specify the level if you want to search through data that this node
+    ; surgically derives from.
+resolveNodeExtraDataPath(aGraph,aNode,dataPath,level)
+    n leadingPath,pos
+    s:$g(level)'=+$g(level) level=1 ; default in a level of 1
+    s leadingPath=$na(@aGraph@("nodes",aNode,"typeStack",level))
+    f pos=1:1:$l(dataPath,",") s leadingPath=$na(@leadingPath@($p(dataPath,",",pos)))
+    q leadingPath
+    ;
+    ;
     ; Sets the extra data scalar that's been cached in this node (if any)
     ; The dataPath parameter is a string containing a comma-delimited list.
     ; The scalar will be stored in the location in the node defined by the dataPath parameter.
 setNodeExtraData(aGraph,aNode,dataPath,scalar)
-    n leadingPath,pos
-    s leadingPath=$na(@aGraph@("nodes",aNode,"typeStack",1))
-    f pos=1:1:$l(dataPath,",") s leadingPath=$na(@leadingPath@($p(dataPath,",",pos)))
+    n leadingPath
+    s leadingPath=$$resolveNodeExtraDataPath(aGraph,aNode,dataPath)
     s @leadingPath=scalar
     q 1
     ;
@@ -322,9 +332,8 @@ setNodeExtraData(aGraph,aNode,dataPath,scalar)
     ; The dataPath parameter is a string containing a comma-delimited list.
     ; The scalar will be stored in the location in the node defined by the dataPath parameter.
 getNodeExtraData(aGraph,aNode,dataPath)
-    n leadingPath,pos
-    s leadingPath=$na(@aGraph@("nodes",aNode,"typeStack",1))
-    f pos=1:1:$l(dataPath,",") s leadingPath=$na(@leadingPath@($p(dataPath,",",pos)))
+    n leadingPath
+    s leadingPath=$$resolveNodeExtraDataPath(aGraph,aNode,dataPath)
     q $g(@leadingPath)
     ;
     ;
