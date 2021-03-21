@@ -18,6 +18,9 @@ PARSER6
     ; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     ;
     ;
+    d tester()
+    ;
+    ;
     ; === OVERVIEW ===
     ; Given a language grammer that can is expressed using a syntax diagram consisting only of:
     ;   1) string literals
@@ -194,7 +197,8 @@ PARSER6
     ; The grammarMap and graphTemplatesOut parameters are both string pointers.
 convertGrammar(grammarMap,graphTemplatesOut)
     n tokenName,subTemplate,subGrammar,count,tempgraph
-    s tokenName="" f  s tokenName=$o(@gammarMap@(tokenName)) q:tokenName=""  d  
+    s tokenName="",count=0
+    f  s tokenName=$o(@grammarMap@(tokenName)) q:tokenName=""  d  
     . s subTemplate=$na(@graphTemplatesOut@(tokenName))
     . s subGrammar=$na(@grammarMap@(tokenName))
     . s %=$$convertSubtree(subGrammar,subTemplate)
@@ -242,15 +246,18 @@ convertSubTreeChain(grammarMap,graphOut)
     i @grammarMap'="subtreeChain" s $EC=",Uthe subtree chain converter was called incorrectly," ; this should never happen
     k @graphOut ; prevent data leakage
     n tempGraph,pos,endNode,tempNodeTypeStack,newTempEndNode,count,hasForcing
+    s tempGraph="thisTempGraph"_$ST ; we need to make sure that recursion doesn't step on our own variables
+    n @tempGraph
     s tempNodeTypeStack(1)="",count=0,pos="",endNode=""
     f  s pos=$o(@grammarMap@(pos)) q:pos=""  d  
     . s newTempEndNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
     . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,newTempEndNode)
-    . i endNode'="" s %=$$addArrow^PARSER5(graphOut,endNode,newTempEndNode) ; if we have an end node, draw a new arrow
+    . i endNode="" s %=$$setStartNode^PARSER5(graphOut,newTempEndNode) i 1 ; The first node in the graph should be the start node
+    . e  s %=$$addArrow^PARSER5(graphOut,endNode,newTempEndNode) ; if we already have an end node, draw a new arrow from it to our new node
     . s %=$$setEndNode^PARSER5(graphOut,newTempEndNode)
     . s endNode=newTempEndNode
-    . s %=$$convertSubtree($na(@grammarMap@(pos)),"tempGraph") ; recursion to dig into the grammar map
-    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,newTempEndNode,"tempGraph",hasForcing) ; replace temp node
+    . s %=$$convertSubtree($na(@grammarMap@(pos)),tempGraph) ; recursion to dig into the grammar map
+    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,newTempEndNode,tempGraph,hasForcing) ; replace temp node
     . s count=count+1
     q count
     ;
@@ -272,19 +279,21 @@ convertOptions(grammarMap,graphOut)
     i @grammarMap'="options" s $EC=",Uthe options converter was called incorrectly," ; this should never happen
     k @graphOut ; prevent data leakage
     n tempGraph,pos,endNode,tempNodeTypeStack,tempNode,count,emptyStartNode,emptyEndNode,hasForcing
+    s tempGraph="thisTempGraph"_$ST ; we need to make sure that recursion doesn't step on our own variables
+    n @tempGraph
     s tempNodeTypeStack(1)="",count=0
     s emptyStartNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
     s emptyEndNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
+    s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
     s pos="" f  s pos=$o(@grammarMap@(pos)) q:pos=""  d  
     . s tempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
     . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,tempNode)
     . s %=$$addArrow^PARSER5(graphOut,emptyStartNode,tempNode)
     . s %=$$addArrow^PARSER5(graphOut,tempNode,emptyEndNode)
-    . s %=$$convertSubtree($na(@grammarMap@(pos)),"tempGraph") ; recursion to dig into the grammar map
-    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5("graphOut",tempNode,"tempGraph",hasForcing)
+    . s %=$$convertSubtree($na(@grammarMap@(pos)),tempGraph) ; recursion to dig into the grammar map
+    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,tempNode,tempGraph,hasForcing)
     . s count=count+1
-    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
-    s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
     q count
     ;
     ;
@@ -303,10 +312,14 @@ convertDelimList(grammarMap,graphOut)
     i @grammarMap'="delimList" s $EC=",Uthe delimited list converter was called incorrectly," ; this should never happen
     k @graphOut ; prevent data leakage
     n tempNodeTypeStack,emptyStartNode,emptyEndNode,contentTempNode,delimTempNode,tempGraph,contentHasForcing,delimHasForcing
+    s tempGraph="thisTempGraph"_$ST ; we need to make sure that recursion doesn't step on our own variables
+    n @tempGraph
     s tempNodeTypeStack(1)=""
     ; Build a template graph that we'll surgically modify into the proper delimited list graph
     s emptyStartNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
     s emptyEndNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
+    s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
     s contentTempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack)
     s contentHasForcing=$$setNodeForcingInfo(grammarMap,graphOut,contentTempNode)
     s delimTempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack)
@@ -315,13 +328,11 @@ convertDelimList(grammarMap,graphOut)
     s %=$$addArrow^PARSER5(graphOut,contentTempNode,emptyEndNode)
     s %=$$addArrow^PARSER5(graphOut,contentTempNode,delimTempNode)
     s %=$$addArrow^PARSER5(graphOut,delimTempNode,contentTempNode)
-    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
-    s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
     ; Now surgically replace the delimTempNode and contentTempNode with real graph data
-    s %=$$convertSubtree($na(@grammarMap@("content")),"tempGraph") ; recursion to dig into the grammar map
-    s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,contentTempNode,"tempGraph",contentHasForcing)
-    s %=$$convertSubtree($na(@grammarMap@("delimiter")),"tempGraph") ; recursion to dig into the grammar map
-    s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,delimTempNode,"tempGraph",delimHasForcing)
+    s %=$$convertSubtree($na(@grammarMap@("content")),tempGraph) ; recursion to dig into the grammar map
+    s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,contentTempNode,tempGraph,contentHasForcing)
+    s %=$$convertSubtree($na(@grammarMap@("delimiter")),tempGraph) ; recursion to dig into the grammar map
+    s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,delimTempNode,tempGraph,delimHasForcing)
     q 1
     ;
     ;
@@ -372,3 +383,14 @@ convertEmpty(grammarMap,graphOut)
     ; ===================================== TEST CODE =====================================
     ;
     ;
+tester()
+    n localGrammarMap,convertedGraphTemplates
+    w !,"Building a simple grammar map to test with..."
+    d buildTestGrammer^PARSER1("localGrammarMap")
+    w "Done."
+    w !,"Converting the grammar map to a collection of graph templates..."
+    s %=$$convertGrammar("localGrammarMap","convertedGraphTemplates")
+    w "Done."
+    w !,!
+    zw convertedGraphTemplates
+    q
