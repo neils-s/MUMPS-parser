@@ -126,7 +126,7 @@ PARSER6
     ;   Recursion step:
     ;       Determine the grammar element type (options, delimited list, etc.)
     ;       Do specific logic based on element type, returning a subgraph
-    ;       Somehow surgically paste in the returned subgraph (???)
+    ;       Surgically paste in the returned subgraph
     ; 
     ;   Convert "":
     ;       Create a node with type of string holding empty string
@@ -187,4 +187,188 @@ PARSER6
     ;
     ; =====================================================================================
     ; ===================================== CORE CODE =====================================
+    ;
+    ;
+    ; This takes in a pointer to a full grammar map and returns a the corresponding graph
+    ; templates in the location pointed at by graphTemplatesOut.
+    ; The grammarMap and graphTemplatesOut parameters are both string pointers.
+convertGrammar(grammarMap,graphTemplatesOut)
+    n tokenName,subTemplate,subGrammar,count,tempgraph
+    s tokenName="" f  s tokenName=$o(@gammarMap@(tokenName)) q:tokenName=""  d  
+    . s subTemplate=$na(@graphTemplatesOut@(tokenName))
+    . s subGrammar=$na(@grammarMap@(tokenName))
+    . s %=$$convertSubtree(subGrammar,subTemplate)
+    . s count=count+1
+    q count
+    ;
+    ;
+    ; This drives the conversion process.
+    ; by calling the appropriate conversion subroutine.
+    ; It is also responsible for setting the "force" data in the nodes
+    ; The grammarMap and graphOut parameters are both string pointers.
+convertSubtree(grammarMap,graphOut)
+    n subTreeType
+    s subTreeType=@grammarMap
+    i subTreeType="" s %=$$convertEmpty(grammarMap,graphOut)
+    i subTreeType="literal" s %=$$convertLiteral(grammarMap,graphOut)
+    i subTreeType="subtreeChain" s %=$$convertSubTreeChain(grammarMap,graphOut)
+    i subTreeType="options" s %=$$convertOptions(grammarMap,graphOut)
+    i subTreeType="delimList" s %=$$convertDelimList(grammarMap,graphOut)
+    i subTreeType="token" s %=$$convertToken(grammarMap,graphOut)
+    q 1
+    ;
+    ;
+    ; The grammarMap and graphOut parameters are both string pointers
+setNodeForcingInfo(grammarMap,graphOut,aNode)
+    n returnVal
+    s returnVal=0
+    s:$g(@grammarMap@("force"))["forceToLowerCase" returnVal=returnVal+$$setNodeExtraData^PARSER5(graphOut,aNode,"forceToLower",1)
+    s:$g(@grammarMap@("force"))["noStore" returnVal=returnVal+$$setNodeExtraData^PARSER5(graphOut,aNode,"noStore",1)
+    q returnVal
+    ;
+    ;
+    ; This converts a subtree chain in the grammar into a graph.
+    ; It takes in a string pointer to a grammar map like this:
+    ;   @grammarMap="subtreeChain"
+    ;   @grammarMap@(1)="literal"
+    ;   @grammarMap@(1,"value")="("
+    ;   @grammarMap@(2)="token"
+    ;   @grammarMap@(2,"value")="token3"
+    ;   @grammarMap@(3)="literal"
+    ;   @grammarMap@(3,"value")=")"
+    ; It returns the corresponding graph in the variable specified
+    ; by the graphOut string pointer.
+convertSubTreeChain(grammarMap,graphOut)
+    i @grammarMap'="subtreeChain" s $EC=",Uthe subtree chain converter was called incorrectly," ; this should never happen
+    k @graphOut ; prevent data leakage
+    n tempGraph,pos,endNode,tempNodeTypeStack,newTempEndNode,count,hasForcing
+    s tempNodeTypeStack(1)="",count=0,pos="",endNode=""
+    f  s pos=$o(@grammarMap@(pos)) q:pos=""  d  
+    . s newTempEndNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
+    . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,newTempEndNode)
+    . i endNode'="" s %=$$addArrow^PARSER5(graphOut,endNode,newTempEndNode) ; if we have an end node, draw a new arrow
+    . s %=$$setEndNode^PARSER5(graphOut,newTempEndNode)
+    . s endNode=newTempEndNode
+    . s %=$$convertSubtree($na(@grammarMap@(pos)),"tempGraph") ; recursion to dig into the grammar map
+    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,newTempEndNode,"tempGraph",hasForcing) ; replace temp node
+    . s count=count+1
+    q count
+    ;
+    ;
+    ; This converts a list of options in the grammar into a graph.
+    ; It takes in a string pointer to a grammar map like this:
+    ;   @grammarMap="options"
+    ;   @grammarMap@(1)="literal"
+    ;   @grammarMap@(1,"value")="("
+    ;   @grammarMap@(2)="token"
+    ;   @grammarMap@(2,"value")="token3"
+    ;   @grammarMap@(3)="literal"
+    ;   @grammarMap@(3,"value")=")"
+    ; The corresponding graph is placed in the variable specified
+    ; by the graphOut string pointer.
+    ; Note that creating a graph from the list of options requires starting 
+    ; and ending the graph with some nodes.  We'll use empty string nodes.
+convertOptions(grammarMap,graphOut)
+    i @grammarMap'="options" s $EC=",Uthe options converter was called incorrectly," ; this should never happen
+    k @graphOut ; prevent data leakage
+    n tempGraph,pos,endNode,tempNodeTypeStack,tempNode,count,emptyStartNode,emptyEndNode,hasForcing
+    s tempNodeTypeStack(1)="",count=0
+    s emptyStartNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s emptyEndNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s pos="" f  s pos=$o(@grammarMap@(pos)) q:pos=""  d  
+    . s tempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
+    . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,tempNode)
+    . s %=$$addArrow^PARSER5(graphOut,emptyStartNode,tempNode)
+    . s %=$$addArrow^PARSER5(graphOut,tempNode,emptyEndNode)
+    . s %=$$convertSubtree($na(@grammarMap@(pos)),"tempGraph") ; recursion to dig into the grammar map
+    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5("graphOut",tempNode,"tempGraph",hasForcing)
+    . s count=count+1
+    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
+    s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
+    q count
+    ;
+    ;
+    ; This converts a delimited list into a graph.  An example of
+    ; a grammar map that contains a delimited list is:
+    ;   @map@="delimList"
+    ;   @map@("delimiter")="literal"
+    ;   @map@("delimiter","value")="::"
+    ;   @map@("content")="token"
+    ;   @map@("content","value") = "token1"
+    ; The corresponding graph is placed in the variable specified
+    ; by the graphOut string pointer.
+    ; Note that creating a graph from the list of options requires starting 
+    ; and ending the graph with some nodes.  We'll use empty string nodes.
+convertDelimList(grammarMap,graphOut)
+    i @grammarMap'="delimList" s $EC=",Uthe delimited list converter was called incorrectly," ; this should never happen
+    k @graphOut ; prevent data leakage
+    n tempNodeTypeStack,emptyStartNode,emptyEndNode,contentTempNode,delimTempNode,tempGraph,contentHasForcing,delimHasForcing
+    s tempNodeTypeStack(1)=""
+    ; Build a template graph that we'll surgically modify into the proper delimited list graph
+    s emptyStartNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s emptyEndNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s contentTempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack)
+    s contentHasForcing=$$setNodeForcingInfo(grammarMap,graphOut,contentTempNode)
+    s delimTempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack)
+    s delimHasForcing=$$setNodeForcingInfo(grammarMap,graphOut,delimTempNode)
+    s %=$$addArrow^PARSER5(graphOut,emptyStartNode,contentTempNode)
+    s %=$$addArrow^PARSER5(graphOut,contentTempNode,emptyEndNode)
+    s %=$$addArrow^PARSER5(graphOut,contentTempNode,delimTempNode)
+    s %=$$addArrow^PARSER5(graphOut,delimTempNode,contentTempNode)
+    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
+    s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
+    ; Now surgically replace the delimTempNode and contentTempNode with real graph data
+    s %=$$convertSubtree($na(@grammarMap@("content")),"tempGraph") ; recursion to dig into the grammar map
+    s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,contentTempNode,"tempGraph",contentHasForcing)
+    s %=$$convertSubtree($na(@grammarMap@("delimiter")),"tempGraph") ; recursion to dig into the grammar map
+    s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,delimTempNode,"tempGraph",delimHasForcing)
+    q 1
+    ;
+    ;
+    ; This converts a token indicator from a grammer map to a graph that contains
+    ; a single token node.  This is pretty much the simplest possible graph.
+    ; The grammarMap and graphOut parameters are both string pointers.
+convertToken(grammarMap,graphOut)
+    i @grammarMap'="token" s $EC=",Uthe token converter was called incorrectly," ; this should never happen
+    k @graphOut ; prevent data leakage
+    n tempNodeTypeStack,tempNode
+    s tempNodeTypeStack(1)=@grammarMap@("value")
+    s tempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack)
+    s %=$$setNodeForcingInfo(grammarMap,graphOut,tempNode)
+    s %=$$setStartNode^PARSER5(graphOut,tempNode)
+    s %=$$setEndNode^PARSER5(graphOut,tempNode)
+    q 1
+    ;
+    ;
+    ; This converts a string literal from a grammer map to a graph that contains
+    ; a single string node.  This is pretty much the simplest possible graph.
+    ; The grammarMap and graphOut parameters are both string pointers.
+convertLiteral(grammarMap,graphOut)
+    i @grammarMap'="literal" s $EC=",Uthe literal converter was called incorrectly," ; this should never happen
+    k @graphOut
+    n tempNodeTypeStack,tempNode
+    s tempNodeTypeStack(1)=@grammarMap@("value")
+    s tempNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s %=$$setNodeForcingInfo(grammarMap,graphOut,tempNode)
+    s %=$$setStartNode^PARSER5(graphOut,tempNode)
+    s %=$$setEndNode^PARSER5(graphOut,tempNode)
+    q 1
+    ;
+    ;
+    ; This converts a string literal from a grammer map to a graph that contains
+    ; an empty string node.  This is absolutely the simplest possible graph.
+convertEmpty(grammarMap,graphOut)
+    i @grammarMap'="" s $EC=",Uthe empty element converter was called incorrectly," ; this should never happen
+    k @graphOut ; prevent data leakage
+    n tempNodeTypeStack,tempNode
+    s tempNodeTypeStack(1)=""
+    s tempNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s %=$$setStartNode^PARSER5(graphOut,tempNode)
+    s %=$$setEndNode^PARSER5(graphOut,tempNode)
+    q 1
+    ;
+    ;
+    ; =====================================================================================
+    ; ===================================== TEST CODE =====================================
+    ;
     ;
