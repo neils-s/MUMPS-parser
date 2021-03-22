@@ -398,6 +398,33 @@ nextOutgoingArrow(aGraph,anArrow)
     q nextArrow
     ;
     ;
+    ; Given an arrow, this one returns the "next" arrow that ends at the same target
+nextIncomingArrow(aGraph,anArrow)
+    n targetNode,inArrows,nextArrow
+    s targetNode=$$targetNode(aGraph,anArrow)
+    s inArrows=$$incomingArrows(aGraph,targetNode)
+    s nextArrow=$o(@inArrows@(anArrow))
+    q nextArrow
+    ;
+    ;
+    ; Returns a count of the outgoing arrows that leave a Node
+countOutgoingArrows(aGraph,aNode)
+    n arrows,pos,count
+    s arrows=$$outgoingArrows(aGraph,aNode)
+    s pos="",count=0 
+    f  s pos=$o(@arrows@(pos)) q:pos=""  s count=count+1
+    q count
+    ;
+    ;
+    ; Returns a count of the number of incoming arrows that arrive at a node
+countIncomingArrows(aGraph,aNode)
+    n arrows,pos,count
+    s arrows=$$incomingArrows(aGraph,aNode)
+    s pos="",count=0 
+    f  s pos=$o(@arrows@(pos)) q:pos=""  s count=count+1
+    q count
+    ;
+    ;
     ; Given a node, this returns the first arrow leaving this node.
 firstOutgoingArrow(aGraph,aNode)
     q $o(@$$outgoingArrows(aGraph,aNode)@(""))
@@ -560,6 +587,93 @@ surgicallyReplaceNodeWithSubgraph(aGraph,nodeToReplace,replacingGraph,preserveNo
     ; Remove nodeToReplace
     s %=$$removeNode(aGraph,nodeToReplace)
     q startNode
+    ;
+    ;
+    ; Removes an empty string node that has only a single incoming arrow.
+    ; After the node is removed, the source of the arrow that pointed at it
+    ; has arrows drawn out to the targets of all of the arrows that originated
+    ; at the extraneous node.
+    ; The truthiness of the returned value indicates whether or not the node was removed.
+tryRemoveNodeWithOneIncoming(aGraph,aNode)
+    i $$nodeData(aGraph,aNode)'="" q 0 ; we only remove empty string nodes
+    i $$nodeDataType(aGraph,aNode)'="string" q 0 ; we only remove empty string nodes
+    i $$countIncomingArrows(aGraph,aNode)'=1 q 0 ; We don't remove nodes with many incoming arrows or the start node
+    n incomingArrow,sourceNode,outgoingArrow,targetNode,removableArrow,returnVal
+    s incomingArrow=$$firstIncomingArrow(aGraph,aNode)
+    s sourceNode=$$sourceNode(aGraph,incomingArrow)
+    ; We have special logic to trim an extraneous end node
+    i $$endNode(aGraph)=aNode d  q returnVal
+    . i $$countOutgoingArrows(aGraph,sourceNode)>1 s returnVal=0 q  ; the source node might not be eligible to be the end node, so the end node can't be removed
+    . s %=$$removeArrow(aGraph,incomingArrow)
+    . s %=$$setEndNode(aGraph,sourceNode)
+    . s %=$$removeNode(aGraph,aNode)
+    . s returnVal=1
+    ; This node is has one incoming arrow and at least one outgoing arrow
+    s %=$$removeArrow(aGraph,incomingArrow)
+    s outgoingArrow=$$firstOutgoingArrow(aGraph,aNode)
+    f  q:outgoingArrow=""  d  
+    . s targetNode=$$targetNode(aGraph,outgoingArrow)
+    . s %=$$addArrow(aGraph,sourceNode,targetNode)
+    . s removableArrow=outgoingArrow
+    . s outgoingArrow=$$nextOutgoingArrow(aGraph,outgoingArrow)
+    . s %=$$removeArrow(aGraph,removableArrow)
+    s %=$$removeNode(aGraph,aNode)
+    q 1
+    ;
+    ;
+    ; Removes an empty string node that has only a single outgoing arrow.
+    ; After the node is removed, the source of the arrow that pointed at it
+    ; has arrows drawn out to the targets of all of the arrows that originated
+    ; at the extraneous node.
+    ; The truthiness of the returned value indicates whether or not the node was removed.
+tryRemoveNodeWithOneOutgoing(aGraph,aNode)
+    i $$nodeData(aGraph,aNode)'="" q 0 ; we only remove empty string nodes
+    i $$nodeDataType(aGraph,aNode)'="string" q 0 ; we only remove empty string nodes
+    i $$countOutgoingArrows(aGraph,aNode)'=1 q 0 ; We don't remove nodes with many outgoing arrows
+    n incomingArrow,sourceNode,outgoingArrow,targetNode,removableArrow,returnVal
+    s outgoingArrow=$$firstOutgoingArrow(aGraph,aNode)
+    s targetNode=$$targetNode(aGraph,outgoingArrow)
+    ; We have special logic to trim an extraneous start node
+    i $$startNode(aGraph)=aNode d  q returnVal
+    . i $$countIncomingArrows(aGraph,targetNode)>1 s returnVal=0 q  ; The target node might not be eligible to be the start node, so the start node can't be removed
+    . s %=$$removeArrow(aGraph,outgoingArrow)
+    . s %=$$setStartNode(aGraph,targetNode)
+    . s %=$$removeNode(aGraph,aNode)
+    . s returnVal=1
+    ; This node is has exactly one outgoing arrow and at least one incoming arrow
+    s %=$$removeArrow(aGraph,outgoingArrow)
+    s incomingArrow=$$firstIncomingArrow(aGraph,aNode)
+    f  q:incomingArrow=""  d  
+    . s sourceNode=$$sourceNode(aGraph,incomingArrow)
+    . s %=$$addArrow(aGraph,sourceNode,targetNode)
+    . s removableArrow=incomingArrow
+    . s incomingArrow=$$nextIncomingArrow(aGraph,incomingArrow)
+    . s %=$$removeArrow(aGraph,removableArrow)
+    s %=$$removeNode(aGraph,aNode)
+    q 1
+    ;
+    ;
+    ; Passes through the graph trying to remove extraneous nodes
+    ; It may remove zero or more nodes
+    ; Returns the number of nodes removed
+tryRemoveExtraneousNodes(aGraph)
+    n count,thisNode
+    s thisNode="",count=0
+    f  s thisNode=$o(@aGraph@("nodes",thisNode)) q:thisNode=""  d  
+    . i '$$tryRemoveNodeWithOneIncoming(aGraph,thisNode),'$$tryRemoveNodeWithOneOutgoing(aGraph,thisNode) q
+    . s count=count+1
+    q count
+    ;
+    ;
+    ; Removes all extraneous nodes from a graph and returns the count of the number of nodes removed.
+    ; A node is considered extraneous whenever it
+    ;   1) Is an empty string node, and
+    ;   2) Has only one incoming arrow or one outgoing arrow
+removeAllExtraneousNodes(aGraph)
+    n count,totalCount
+    s totalCount=0
+    f  s count=$$tryRemoveExtraneousNodes(aGraph) q:count=0  s totalCount=totalCount+count
+    q totalCount
     ;
     ;
     ; =====  Parse Position managers ======
@@ -834,7 +948,7 @@ emitGraphTemplatesDot(graphTemplates)
 emitNodesAndArrowsDot(aGraph,prelabel,arrowsToEmphasize)
     n aNode,anArrow,nodeLabel
     w !,"   /* Entities */"
-    s aNode="",anArrow="",prelabel=$g(prelabel)
+    s aNode="",anArrow="",prelabel=$tr($g(prelabel)," ","_")
     f  s aNode=$o(@aGraph@("nodes",aNode)) q:aNode=""  d
     . s nodeLabel=$$nodeData(aGraph,aNode)
     . i $$nodeDataType(aGraph,aNode)="string" s nodeLabel="'"_nodeLabel_"'"

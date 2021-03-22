@@ -202,6 +202,7 @@ convertGrammar(grammarMap,graphTemplatesOut)
     . s subTemplate=$na(@graphTemplatesOut@(tokenName))
     . s subGrammar=$na(@grammarMap@(tokenName))
     . s %=$$convertSubtree(subGrammar,subTemplate)
+    . s %=$$removeAllExtraneousNodes^PARSER5(subTemplate)
     . s count=count+1
     q count
     ;
@@ -245,19 +246,26 @@ setNodeForcingInfo(grammarMap,graphOut,aNode)
 convertSubTreeChain(grammarMap,graphOut)
     i @grammarMap'="subtreeChain" s $EC=",Uthe subtree chain converter was called incorrectly," ; this should never happen
     k @graphOut ; prevent data leakage
-    n tempGraph,pos,endNode,tempNodeTypeStack,newTempEndNode,count,hasForcing
+    n tempGraph,tempNodeTypeStack,pos,count,hasForcing,endNode
+    n penultimateNode,lastArrow,tempNode
     s tempGraph="thisTempGraph"_$ST ; we need to make sure that recursion doesn't step on our own variables
     n @tempGraph
-    s tempNodeTypeStack(1)="",count=0,pos="",endNode=""
-    f  s pos=$o(@grammarMap@(pos)) q:pos=""  d  
-    . s newTempEndNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
-    . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,newTempEndNode)
-    . i endNode="" s %=$$setStartNode^PARSER5(graphOut,newTempEndNode) i 1 ; The first node in the graph should be the start node
-    . e  s %=$$addArrow^PARSER5(graphOut,endNode,newTempEndNode) ; if we already have an end node, draw a new arrow from it to our new node
-    . s %=$$setEndNode^PARSER5(graphOut,newTempEndNode)
-    . s endNode=newTempEndNode
+    s tempNodeTypeStack(1)="",count=0
+    s penultimateNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s endNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
+    s %=$$setStartNode^PARSER5(graphOut,penultimateNode)
+    s %=$$setEndNode^PARSER5(graphOut,endNode)
+    s lastArrow=$$addArrow^PARSER5(graphOut,penultimateNode,endNode)
+    f pos=1:1 q:'$d(@grammarMap@(pos))  d 
+    . s lastArrow=$$firstIncomingArrow^PARSER5(graphOut,endNode) ; Here we use the fact that any graph that replace the penultimate node would have had a unique end node
+    . s penultimateNode=$$sourceNode^PARSER5(graphOut,lastArrow)
+    . s %=$$removeArrow^PARSER5(graphOut,lastArrow)
+    . s tempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
+    . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,tempNode)
+    . s %=$$addArrow^PARSER5(graphOut,penultimateNode,tempNode)
+    . s %=$$addArrow^PARSER5(graphOut,tempNode,endNode)
     . s %=$$convertSubtree($na(@grammarMap@(pos)),tempGraph) ; recursion to dig into the grammar map
-    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,newTempEndNode,tempGraph,hasForcing) ; replace temp node
+    . s %=$$surgicallyReplaceNodeWithSubgraph^PARSER5(graphOut,tempNode,tempGraph,hasForcing) ; replace temp node
     . s count=count+1
     q count
     ;
@@ -284,9 +292,9 @@ convertOptions(grammarMap,graphOut)
     s tempNodeTypeStack(1)="",count=0
     s emptyStartNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
     s emptyEndNode=$$addNode^PARSER5(graphOut,"string",.tempNodeTypeStack)
-    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode)
+    s %=$$setStartNode^PARSER5(graphOut,emptyStartNode) 
     s %=$$setEndNode^PARSER5(graphOut,emptyEndNode)
-    s pos="" f  s pos=$o(@grammarMap@(pos)) q:pos=""  d  
+    f pos=1:1 q:'$d(@grammarMap@(pos))  d
     . s tempNode=$$addNode^PARSER5(graphOut,"subgraph",.tempNodeTypeStack) ; add a harmless node that we can surgically replace
     . s hasForcing=$$setNodeForcingInfo(grammarMap,graphOut,tempNode)
     . s %=$$addArrow^PARSER5(graphOut,emptyStartNode,tempNode)
@@ -389,8 +397,10 @@ tester()
     d buildTestGrammer^PARSER1("localGrammarMap")
     w "Done."
     w !,"Converting the grammar map to a collection of graph templates..."
+    ;w ! zw localGrammarMap
     s %=$$convertGrammar("localGrammarMap","convertedGraphTemplates")
     w "Done."
-    w !,!
-    zw convertedGraphTemplates
+    w !
+    d emitGraphTemplatesDot^PARSER5("convertedGraphTemplates")
+    ;w ! zw convertedGraphTemplates
     q
