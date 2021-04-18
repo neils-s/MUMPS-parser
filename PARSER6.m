@@ -412,11 +412,22 @@ tester1()
     q
     ;
 tester2()
-    n grammar,graphGrammar
+    n grammar,graphGrammarTemplates,myGraph,memory
+    s memory=$s
     w !,"Loading standard MUMPS grammar in legacy syntax diagram format"
-    s %=$$loadAll^GRAMMER3(.grammar)
+    s %=$$loadAll^GRAMMER1(.grammar)
     w !,"Converting grammar to general graph format."
-    s %=$$convertGrammar("grammar","graphGrammar")
+    s %=$$convertGrammar("grammar","graphGrammarTemplates")
     w !,"Emitting graph of grammar."
-    d emitGraphTemplatesDot^PARSER5("graphGrammar")
+    d emitGraphTemplatesDot^PARSER5("graphGrammarTemplates")
+    k grammar ; free up a bit of memory
+    ;
+    s stringToParse="w !,""Hello world!"""
+    s stringType="command"
+    m myGraph=graphGrammarTemplates(stringType)
+    w !,"Parsing '",stringToParse,"' as a ",stringType
+    d tryParseAndReport^PARSER5(stringToParse,"myGraph","graphGrammarTemplates",1)
+    w "Memory consumed: ",memory-$s
     q
+    ;
+    ;
