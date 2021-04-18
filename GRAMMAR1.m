@@ -1,5 +1,6 @@
+ROUTINE GRAMMER1
 GRAMMER1
-    ; Copyright (C) 2013 Neils Schoenfelder
+    ; Copyright (C) 2013-2021 Neils Schoenfelder
     ; 
     ; This program is free software; you can redistribute it and/or
     ; modify it under the terms of the GNU General Public License
@@ -1764,7 +1765,7 @@ loadPatterns(array)
     s array("patcode",2,"content",2,1)="literal"
     s array("patcode",2,"content",2,1,"value")="Y"
     s array("patcode",2,"content",2,2)="token"
-    s array("patCode",2,"content",2,2,"force")="forceToLowerCase"
+    s array("patcode",2,"content",2,2,"force")="forceToLowerCase"
     s array("patcode",2,"content",2,2,"value")="patnonY"
     s array("patcode",2,"content",2,3)="literal"
     s array("patcode",2,"content",2,3,"value")="Y"
@@ -2003,12 +2004,12 @@ loadCommands(array)
     s array("deviceparameters",1)="token"
     s array("deviceparameters",1,"value")="deviceparam"
     s array("deviceparameters",2)="subtreeChain"
-    s array("deviceParameters",2,1)="token"
-    s array("deviceParameters",2,1,"value")="openParen"
+    s array("deviceparameters",2,1)="token"
+    s array("deviceparameters",2,1,"value")="openParen"
     s array("deviceparameters",2,2)="subtreeChain"
     s array("deviceparameters",2,2,1)="options"
     s array("deviceparameters",2,2,1,1)=""
-    s array("deviceParameters",2,1,1,2)="subtreeChain"
+    s array("deviceparameters",2,2,1,2)="subtreeChain"
     s array("deviceparameters",2,2,1,2,1)="delimList"
     s array("deviceparameters",2,2,1,2,1,"delimiter")="token"
     s array("deviceparameters",2,2,1,2,1,"delimiter","value")="colon"
@@ -2016,10 +2017,10 @@ loadCommands(array)
     s array("deviceparameters",2,2,1,2,1,"content",1)=""
     s array("deviceparameters",2,2,1,2,1,"content",2)="token"
     s array("deviceparameters",2,2,1,2,1,"content",2,"value")="deviceparam"
-    s array("deviceparameters",2,1,1,2,2)="token"
-    s array("deviceparameters",2,1,1,2,2,"value")="colon"
-    s array("deviceparameters",2,1,2)="token"
-    s array("deviceparameters",2,1,2,"value")="deviceparam"
+    s array("deviceparameters",2,2,1,2,2)="token"
+    s array("deviceparameters",2,2,1,2,2,"value")="colon"
+    s array("deviceparameters",2,2,2)="token"
+    s array("deviceparameters",2,2,2,"value")="deviceparam"
     s array("deviceparameters",2,3)="token"
     s array("deviceparameters",2,3,"value")="closeParen"
     ;
@@ -2255,12 +2256,12 @@ loadCommands(array)
     s array("processparameters",1)="token"
     s array("processparameters",1,"value")="expr"
     s array("processparameters",2)="subtreeChain"
-    s array("processParameters",2,1)="token"
-    s array("processParameters",2,1,"value")="openParen"
+    s array("processparameters",2,1)="token"
+    s array("processparameters",2,1,"value")="openParen"
     s array("processparameters",2,2)="subtreeChain"
     s array("processparameters",2,2,1)="options"
     s array("processparameters",2,2,1,1)=""
-    s array("processParameters",2,1,1,2)="subtreeChain"
+    s array("processparameters",2,2,1,2)="subtreeChain"
     s array("processparameters",2,2,1,2,1)="delimList"
     s array("processparameters",2,2,1,2,1,"delimiter")="token"
     s array("processparameters",2,2,1,2,1,"delimiter","value")="colon"
@@ -2268,10 +2269,10 @@ loadCommands(array)
     s array("processparameters",2,2,1,2,1,"content",1)=""
     s array("processparameters",2,2,1,2,1,"content",2)="token"
     s array("processparameters",2,2,1,2,1,"content",2,"value")="expr"
-    s array("processparameters",2,1,1,2,2)="token"
-    s array("processparameters",2,1,1,2,2,"value")="colon"
-    s array("processparameters",2,1,2)="token"
-    s array("processparameters",2,1,2,"value")="expr"
+    s array("processparameters",2,2,1,2,2)="token"
+    s array("processparameters",2,2,1,2,2,"value")="colon"
+    s array("processparameters",2,2,2)="token"
+    s array("processparameters",2,2,2,"value")="expr"
     s array("processparameters",2,3)="token"
     s array("processparameters",2,3,"value")="closeParen"
     ;
@@ -2285,7 +2286,8 @@ loadCommands(array)
     s array("jobparameters",1)="token"
     s array("jobparameters",1,"value")="timeout"
     s array("jobparameters",2)="subtreeChain"
-    s array("jobparameters",2,1)="processparameters"
+    s array("jobparameters",2,1)="token"
+    s array("jobparameters",2,1,"value")="processparameters"
     s array("jobparameters",2,2)="options"
     s array("jobparameters",2,2,1)=""
     s array("jobparameters",2,2,2)="token"
@@ -2649,27 +2651,6 @@ loadCommands(array)
     s array("openCommand",4,"delimiter","value")="comma"
     s array("openCommand",4,"content")="token"
     s array("openCommand",4,"content","value")="openargument"
-    ;
-    s array("openCommand")="subtreeChain"
-    s array("openCommand",1)="options"
-    s array("openCommand",1,"force")="forceToLowerCase"
-    s array("openCommand",1,1)="literal"
-    s array("openCommand",1,1,"value")="q"
-    s array("openCommand",1,2)="literal"
-    s array("openCommand",1,2,"value")="quit"
-    s array("openCommand",2)="token"
-    s array("openCommand",2,"value")="postcond"
-    s array("openCommand",3)="token"
-    s array("openCommand",3,"value")="SP"
-    s array("openCommand",4)="options"
-    s array("openCommand",4,1)=""
-    s array("openCommand",4,2)="token"
-    s array("openCommand",4,2,"value")="expr"
-    s array("openCommand",4,3)="subtreeChain"
-    s array("openCommand",4,3,1)="token"
-    s array("openCommand",4,3,1,"value")="atSign"
-    s array("openCommand",4,3,2)="token"
-    s array("openCommand",4,3,2,"value")="expratom"
     ;
     s array("quitCommand")="subtreeChain"
     s array("quitCommand",1)="options"
@@ -3495,7 +3476,7 @@ loadRoutineStructure(array)
     ;
     ;
 loadAll(array)
-    s array("expratom")="" ; for testing purposes
+    ;s array("expratom")="" ; for testing purposes
     s %=$$loadChars(.array)
     s %=$$loadStrings(.array)
     s %=$$loadNumbers(.array)
@@ -3510,7 +3491,7 @@ loadAll(array)
     ;
 tester()
     ; TODO:  Finish this!!!
-    n grammar,outList,codeToParse,outTree
+    n grammar,outList,codeToParse,outTree,parseCount
     s %=$$loadAll(.grammar)
     ; zwrite grammar
     ;
@@ -3540,6 +3521,13 @@ tester()
     k outTree
     s codeToParse="s $ec="""",x=4,fop=10"
     w !,$$parseToken^PARSER1("commands","outTree","grammar","codeToParse",1),!
+    zwrite outTree
+    ;
+    k outTree,codeToParse
+    s %=$$generateToken^GENERATOR1("command","codeToParse","grammar",15)
+    w !,"Randomly generated code to parse: ",!,codeToParse
+    s parseCount=$$parseToken^PARSER1("command","outTree","grammar","codeToParse",1)
+    w !,parseCount_" characters parsed.  This is a "_$s(parseCount=$l(codeToParse):"success!",1:"failure!"),!
     zwrite outTree
     ;
     q
