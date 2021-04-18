@@ -392,6 +392,12 @@ convertEmpty(grammarMap,graphOut)
     ;
     ;
 tester()
+    ;d tester1()
+    d tester2()
+    q
+    ;
+    ;
+tester1()
     n localGrammarMap,convertedGraphTemplates
     w !,"Building a simple grammar map to test with..."
     d buildTestGrammer^PARSER1("localGrammarMap")
@@ -403,4 +409,14 @@ tester()
     w !
     d emitGraphTemplatesDot^PARSER5("convertedGraphTemplates")
     ;w ! zw convertedGraphTemplates
+    q
+    ;
+tester2()
+    n grammar,graphGrammar
+    w !,"Loading standard MUMPS grammar in legacy syntax diagram format"
+    s %=$$loadAll^GRAMMER3(.grammar)
+    w !,"Converting grammar to general graph format."
+    s %=$$convertGrammar("grammar","graphGrammar")
+    w !,"Emitting graph of grammar."
+    d emitGraphTemplatesDot^PARSER5("graphGrammar")
     q
